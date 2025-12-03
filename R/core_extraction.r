@@ -39,11 +39,11 @@
 #'
 #' @details
 #' \strong{Rotation Strategy:}
-#' Raw FA solutions from ASReml are not unique. This function rotates the loadings ($\Lambda$)
-#' and scores ($f$) such that:
+#' Raw FA solutions from ASReml are not unique. This function rotates the loadings (\eqn{\Lambda})
+#' and scores (\eqn{f}) such that:
 #' \deqn{\Lambda_{rot} = \Lambda V}
 #' \deqn{f_{rot} = f V}
-#' where $V$ is the matrix of eigenvectors from the SVD of $\Lambda$. This ensures that
+#' where \eqn{V} is the matrix of eigenvectors from the SVD of \eqn{\Lambda}. This ensures that
 #' Factor 1 captures the maximum amount of genetic variance, allowing it to be interpreted
 #' as "Overall Performance."
 #'

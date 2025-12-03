@@ -30,13 +30,26 @@
 #' @importFrom grDevices hcl.colors
 #' @export
 check_connectivity <- function(data, genotype = "Genotype", trial = "Site", threshold = 10) {
-  cat("--- Checking Network Connectivity ---\n")
-  if(!all(c(genotype, trial) %in% names(data))) stop("Columns not found.")
 
+  # 1. Incidence and Raw Counts
   inc_table <- table(data[[genotype]], data[[trial]])
   incidence <- as.matrix(inc_table); incidence[incidence > 0] <- 1
-  connect_mat <- t(incidence) %*% incidence
+  connect_mat <- t(incidence) %*% incidence # Intersection (A & B)
 
+  # 2. Calculate Percentage (Jaccard Index: Intersection / Union)
+  # Union(A,B) = Count(A) + Count(B) - Intersection(A,B)
+  site_totals <- diag(connect_mat)
+  pct_mat <- connect_mat # Init
+
+  p <- ncol(connect_mat)
+  for(i in 1:p) {
+    for(j in 1:p) {
+      union_count <- site_totals[i] + site_totals[j] - connect_mat[i,j]
+      pct_mat[i,j] <- round((connect_mat[i,j] / union_count) * 100, 1)
+    }
+  }
+
+  # 3. Identify Issues
   mat_check <- connect_mat; diag(mat_check) <- NA
   issues_idx <- which(mat_check < threshold, arr.ind = TRUE)
 
@@ -45,32 +58,60 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
     disconnects <- data.frame(
       Site_A = rownames(connect_mat)[issues_idx[,1]],
       Site_B = colnames(connect_mat)[issues_idx[,2]],
-      Shared = connect_mat[issues_idx]
+      Shared_Count = connect_mat[issues_idx],
+      Shared_Pct = pct_mat[issues_idx]
     )
     disconnects <- disconnects[as.character(disconnects$Site_A) < as.character(disconnects$Site_B), ]
-    cat(sprintf("WARNING: Found %d pairs with low connectivity (<%d lines).\n", nrow(disconnects), threshold))
-  } else {
-    cat(sprintf("PASSED: All site pairs share at least %d genotypes.\n", threshold))
+    warning(sprintf("Found %d pairs with < %d shared lines.", nrow(disconnects), threshold))
   }
 
-  p <- ncol(connect_mat)
+  # 4. Visualization (Heatmap with Scale Bar)
+  # Use layout for legend
+  layout(matrix(1:2, ncol=2), widths = c(4, 1))
+
+  # Plot Matrix
+  par(mar = c(6, 6, 4, 1))
   mat_rev <- connect_mat[, p:1]
-  cols <- hcl.colors(20, "RdYlBu")
-  par(mar = c(5, 6, 4, 2))
-  image(1:p, 1:p, mat_rev, axes = FALSE, col = cols, main = "Connectivity Matrix")
+  cols <- hcl.colors(20, "YlGnBu", rev = TRUE) # Yellow (Low) to Blue (High)
+
+  image(1:p, 1:p, mat_rev, axes = FALSE, col = cols,
+        main = "Connectivity (Shared Count)")
+
   axis(1, at = 1:p, labels = colnames(connect_mat), las = 2, cex.axis = 0.7)
   axis(2, at = 1:p, labels = rev(rownames(connect_mat)), las = 1, cex.axis = 0.7)
 
-  return(list(matrix = connect_mat, disconnects = disconnects))
-}
+  # Overlay Numbers
+  if(p < 20) {
+    for(i in 1:p) {
+      for(j in 1:p) {
+        val <- mat_rev[i, j]
+        # Text color logic
+        txt_col <- ifelse(val < threshold, "red", "black")
+        font_wt <- ifelse(val < threshold, 2, 1)
+        text(i, j, labels = val, cex = 0.7, col = txt_col, font = font_wt)
+      }
+    }
+  }
 
+  # Plot Scale Bar
+  par(mar = c(6, 0, 4, 3))
+  legend_vals <- seq(min(connect_mat), max(connect_mat), length.out = 20)
+  image(1, 1:20, t(as.matrix(legend_vals)), axes = FALSE, xlab = "", ylab = "", col = cols)
+  axis(4, at = pretty(1:20), labels = round(pretty(legend_vals)), las = 1, cex.axis = 0.8)
+  mtext("Count", side=4, line=2, cex=0.7)
+
+  # Reset layout
+  layout(1)
+
+  return(list(matrix_count = connect_mat, matrix_pct = pct_mat, disconnects = disconnects))
+}
 
 
 #' Calculate D-Optimality (Network Efficiency)
 #'
 #' @description
 #' Quantifies the information content of the trial network based on the Rotated
-#' Factor Loadings ($\Lambda$). High D-Optimality implies the sites effectively span
+#' Factor Loadings (\eqn{\Lambda}). High D-Optimality implies the sites effectively span
 #' the factor space (good coverage of GxE drivers).
 #'
 #' It performs a "Leave-One-Out" analysis to calculate the "Impact" of each site.
@@ -80,13 +121,13 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
 #'
 #' @return A list containing:
 #' \describe{
-#'   \item{total_d}{The determinant of the total information matrix ($D$).}
+#'   \item{total_d}{The determinant of the total information matrix (\eqn{D}).}
 #'   \item{site_impact}{A dataframe ranking sites by their \% contribution to network information.}
 #' }
 #'
 #' @details
-#' The information matrix is defined as $M = \Lambda' \Lambda$. The D-criterion is $\det(M)$.
-#' The impact of site $i$ is calculated as:
+#' The information matrix is defined as \eqn{M = \Lambda' \Lambda}. The D-criterion is \eqn{\det(M)}.
+#' The impact of site \eqn{i} is calculated as:
 #' \deqn{Impact_i = \frac{D_{total} - D_{-i}}{D_{total}} \times 100}
 #'
 #' @export

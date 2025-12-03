@@ -2,10 +2,22 @@
 % Please edit documentation in R/visualization.r
 \name{plot_spatial}
 \alias{plot_spatial}
-\title{Plot Spatial Field Map}
+\title{Plot Spatial Field Map (Robust)}
 \usage{
-plot_spatial(model, row_col = "Row", col_col = "Column", type = "residuals")
+plot_spatial(input, row = "Row", col = "Column", attribute = "Yield")
+}
+\arguments{
+\item{input}{An `asreml` model object OR a `data.frame`.}
+
+\item{row}{Column name for Field Row (default "Row").}
+
+\item{col}{Column name for Field Column (default "Column").}
+
+\item{attribute}{String. What to plot?
+- If input is data.frame: The column name (e.g. "Yield").
+- If input is asreml: "residuals" (default) or "fitted".}
 }
 \description{
-Plot Spatial Field Map
+Maps raw data (from dataframe) or residuals (from model) to the physical field layout.
+Visualizes missing data with a distinct background color.
 }

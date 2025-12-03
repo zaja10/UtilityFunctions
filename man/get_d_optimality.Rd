@@ -12,20 +12,20 @@ get_d_optimality(object)
 \value{
 A list containing:
 \describe{
-  \item{total_d}{The determinant of the total information matrix ($D$).}
+  \item{total_d}{The determinant of the total information matrix (\eqn{D}).}
   \item{site_impact}{A dataframe ranking sites by their \% contribution to network information.}
 }
 }
 \description{
 Quantifies the information content of the trial network based on the Rotated
-Factor Loadings ($\Lambda$). High D-Optimality implies the sites effectively span
+Factor Loadings (\eqn{\Lambda}). High D-Optimality implies the sites effectively span
 the factor space (good coverage of GxE drivers).
 
 It performs a "Leave-One-Out" analysis to calculate the "Impact" of each site.
 Sites with low impact are redundant and candidates for removal to save costs.
 }
 \details{
-The information matrix is defined as $M = \Lambda' \Lambda$. The D-criterion is $\det(M)$.
-The impact of site $i$ is calculated as:
+The information matrix is defined as \eqn{M = \Lambda' \Lambda}. The D-criterion is \eqn{\det(M)}.
+The impact of site \eqn{i} is calculated as:
 \deqn{Impact_i = \frac{D_{total} - D_{-i}}{D_{total}} \times 100}
 }
