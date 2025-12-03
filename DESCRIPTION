@@ -24,3 +24,5 @@ Suggests:
     knitr,
     rmarkdown
 VignetteBuilder: knitr
+URL: https://github.com/zaja10/UtilityFunctions
+BugReports: https://github.com/zaja10/UtilityFunctions/issues
