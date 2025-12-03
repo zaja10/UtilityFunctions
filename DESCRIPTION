@@ -22,7 +22,9 @@ LazyData: true
 RoxygenNote: 7.3.3
 Suggests: 
     knitr,
-    rmarkdown
+    rmarkdown,
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
 URL: https://github.com/zaja10/UtilityFunctions
 BugReports: https://github.com/zaja10/UtilityFunctions/issues
+Config/testthat/edition: 3
