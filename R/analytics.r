@@ -38,13 +38,12 @@
 #' @export
 check_connectivity <- function(data, genotype = "Genotype", trial = "Site", threshold = 10) {
 
-  # 1. Incidence and Raw Counts
+  # 1. Incidence and Raw Counts (No changes)
   inc_table <- table(data[[genotype]], data[[trial]])
   incidence <- as.matrix(inc_table); incidence[incidence > 0] <- 1
   connect_mat <- t(incidence) %*% incidence # Intersection (A & B)
 
-  # 2. Calculate Percentage (Jaccard Index: Intersection / Union)
-  # Union(A,B) = Count(A) + Count(B) - Intersection(A,B)
+  # 2. Calculate Percentage (Jaccard Index: Intersection / Union) (No changes)
   site_totals <- diag(connect_mat)
   pct_mat <- connect_mat # Init
 
@@ -56,7 +55,7 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
     }
   }
 
-  # 3. Identify Issues
+  # 3. Identify Issues (No changes)
   mat_check <- connect_mat; diag(mat_check) <- NA
   issues_idx <- which(mat_check < threshold, arr.ind = TRUE)
 
@@ -73,10 +72,11 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
   }
 
   # 4. Visualization (Heatmap with Scale Bar)
+
   # Use layout for legend
   layout(matrix(1:2, ncol=2), widths = c(4, 1))
 
-  # Plot Matrix
+  # Plot Matrix (No changes)
   par(mar = c(6, 6, 4, 1))
   mat_rev <- connect_mat[, p:1]
   cols <- hcl.colors(20, "YlGnBu", rev = TRUE) # Yellow (Low) to Blue (High)
@@ -87,7 +87,7 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
   axis(1, at = 1:p, labels = colnames(connect_mat), las = 2, cex.axis = 0.7)
   axis(2, at = 1:p, labels = rev(rownames(connect_mat)), las = 1, cex.axis = 0.7)
 
-  # Overlay Numbers
+  # Overlay Numbers (No changes)
   if(p < 20) {
     for(i in 1:p) {
       for(j in 1:p) {
@@ -114,13 +114,20 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
   # Generate "pretty" label values based on actual data
   pretty_vals <- pretty(c(min_v, max_v), n = 5)
 
-  # Map these values to the 1-20 coordinate system of the legend image
-  # Position = (Value - Min) / Range * 19 + 1
+  # === FIX IS HERE ===
   if (max_v > min_v) {
+    # Map only the values that are within the min/max range of the data
+    pretty_vals <- pretty_vals[pretty_vals >= min_v & pretty_vals <= max_v]
+
+    # Calculate positions based on the actual range
     at_locs <- (pretty_vals - min_v) / (max_v - min_v) * 19 + 1
   } else {
-    at_locs <- 10 # Center if constant
+    # If all values are the same, use only the one unique value, centered on the bar.
+    # This ensures at_locs and pretty_vals have the same length (1).
+    pretty_vals <- unique(c(min_v, max_v))[1]
+    at_locs <- 10 # Center
   }
+  # ===================
 
   # Draw axis
   axis(4, at = at_locs, labels = pretty_vals, las = 1, cex.axis = 0.8)
@@ -131,7 +138,6 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
 
   return(list(matrix_count = connect_mat, matrix_pct = pct_mat, disconnects = disconnects))
 }
-
 
 
 #' Calculate D-Optimality (Network Efficiency)

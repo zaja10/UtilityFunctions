@@ -296,9 +296,37 @@ plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield"
   image(1:n_c, 1:n_r, t(field_rev), add = TRUE, col = cols)
   box()
 
+  # Plot Scale Bar (FIXED LOGIC)
   par(mar = c(3, 0, 3, 3))
+
+  # Dummy strip 1-20
   image(1, 1:20, t(as.matrix(1:20)), axes = FALSE, xlab = "", ylab = "", col = cols)
-  axis(4, at = pretty(1:20, n=5), labels = round(pretty(range(vals, na.rm=T), n=5), 2), las = 1)
+
+  # === FIX IS HERE ===
+  data_range <- range(vals, na.rm = TRUE)
+  min_v <- data_range[1]
+  max_v <- data_range[2]
+
+  # 1. Calculate the 'pretty' label values based on the data range
+  pretty_vals <- pretty(data_range, n = 5)
+
+  # Filter for values within the actual range (helpful for edge cases)
+  pretty_vals <- pretty_vals[pretty_vals >= min_v & pretty_vals <= max_v]
+
+  # 2. Map these values to the 1-20 coordinate system of the legend image
+  # Formula: Position = (Value - Min) / Range * (LegendMax - 1) + 1
+  if (max_v > min_v) {
+    at_locs <- (pretty_vals - min_v) / (max_v - min_v) * 19 + 1
+  } else {
+    # Handle case where all values are the same
+    at_locs <- 10 # Center
+    pretty_vals <- unique(c(min_v, max_v))[1] # Use the single unique value
+  }
+
+  # 3. Draw axis using the matching locations and labels
+  axis(4, at = at_locs, labels = round(pretty_vals, 2), las = 1)
+  # ===================
+
   mtext("Grey = Missing", side = 1, line = 1, cex = 0.6)
   layout(1)
 }

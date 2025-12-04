@@ -6,11 +6,10 @@ generate_grm <- function(n_gen = 200, n_markers = 1000, seed = 123) {
   maf <- runif(n_markers, 0.1, 0.5)
   M <- matrix(0, nrow = n_gen, ncol = n_markers)
   for (j in 1:n_markers) M[, j] <- rbinom(n_gen, 2, maf[j])
-
   gen_names <- paste0("G", sprintf("%03d", 1:n_gen))
-  rownames(M) <- colnames(M) <- gen_names # Placeholder for GRM names
+  marker_names <- paste0("M", sprintf("%03d", 1:n_markers))
   rownames(M) <- gen_names
-
+  colnames(M) <- marker_names
   P_freq <- colMeans(M) / 2
   Two_P <- matrix(rep(2 * P_freq, n_gen), nrow = n_gen, byrow = TRUE)
   Z <- M - Two_P

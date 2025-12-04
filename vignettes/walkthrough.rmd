@@ -1,7 +1,7 @@
 ---
 title: "Complete Workflow: From Phenotypes to Genomic Selection"
-author: "Cereals Quant Genius"
-date: "`r Sys.Date()`"
+author: "Zac"
+date: "12/4/25"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Complete Workflow: From Phenotypes to Genomic Selection}
@@ -130,7 +130,7 @@ iclass_results <- get_i_classes(fa_summary, factor = 2)
 
 
 # Visualize Rank Changes (Slope Graph)
-plot_differential(iclass_results, n_top = 5)
+plot(fa_summary, type = "diff")
 ```
 
 # Part 2: Genomic GxE & Spatial Analysis (Simulation)
@@ -192,7 +192,7 @@ We can visualize the raw data or residuals mapped to the physical field layout t
 ```{r}
 # Visualize the fitted spatial trend for Site_01
 # (Requires subsetting data, or plotting residuals)
-plot_spatial(mod_genomic, row_col = "Row", col_col = "Column", type = "residuals")
+plot_spatial(mod_genomic, row = "Row", col = "Column", attribute = "residuals")
 ```
 
 ## 5. Extract Genomic Breeding Values (GEBVs)
