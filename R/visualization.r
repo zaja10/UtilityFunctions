@@ -247,134 +247,58 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
 #' @export
 plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield") {
 
-  # 1. HANDLE INPUT TYPE
-  # ---------------------------------------------------------
-
-  # Check if user passed "residuals" but meant it for an asreml object
   if (inherits(input, "asreml")) {
-
-    # If attribute is default "Yield", switch to "residuals" for models
     if(attribute == "Yield") attribute <- "residuals"
-
-    # Extract Data from Model
     data_name <- as.character(input$call$data)
-    if (!exists(data_name)) stop("Original dataframe not found in environment.")
+    if (!exists(data_name)) stop("Original dataframe not found.")
     df <- get(data_name)
 
     if (attribute == "fitted") {
-      vals <- fitted(input)
-      main_title <- "Spatial Map: Fitted Values"
+      vals <- fitted(input); main_title <- "Spatial Map: Fitted Values"
     } else {
-      # Default to residuals
-      vals <- resid(input)
-      main_title <- "Spatial Map: Residuals"
+      vals <- resid(input); main_title <- "Spatial Map: Residuals"
     }
 
-    # Handle missing rows alignment
-    # ASReml residuals usually match the fitted data rows.
-    if(length(vals) == nrow(df)) {
-      df$Value_To_Plot <- vals
-    } else {
-      warning("Residual length mismatch. Plotting naive vector (check alignment!).")
-      # Create a temp vector of NAs and fill what we have
+    if(length(vals) == nrow(df)) df$Value_To_Plot <- vals
+    else {
+      warning("Residual mismatch. Padding with NA.")
       df$Value_To_Plot <- rep(NA, nrow(df))
       df$Value_To_Plot[1:length(vals)] <- vals
     }
-
   } else if (inherits(input, "data.frame")) {
-
     df <- input
-    if(is.null(df[[attribute]])) stop(paste("Column", attribute, "not found in dataframe."))
-
+    if(is.null(df[[attribute]])) stop(paste("Column", attribute, "not found."))
     vals <- df[[attribute]]
     df$Value_To_Plot <- vals
     main_title <- paste("Spatial Map:", attribute)
-
   } else {
     stop("Input must be an asreml model or a dataframe.")
   }
 
-  # 2. BUILD MATRIX
-  # ---------------------------------------------------------
   r_vals <- as.numeric(as.character(df[[row]]))
   c_vals <- as.numeric(as.character(df[[col]]))
-
-  if(any(is.na(r_vals)) || any(is.na(c_vals))) stop("Row/Column variables must be numeric.")
-
-  n_r <- max(r_vals, na.rm = TRUE)
-  n_c <- max(c_vals, na.rm = TRUE)
+  n_r <- max(r_vals, na.rm = TRUE); n_c <- max(c_vals, na.rm = TRUE)
 
   field_mat <- matrix(NA, nrow = n_r, ncol = n_c)
-
   for(i in 1:nrow(df)) {
-    if(!is.na(r_vals[i]) & !is.na(c_vals[i])) {
-      field_mat[r_vals[i], c_vals[i]] <- df$Value_To_Plot[i]
-    }
+    if(!is.na(r_vals[i]) & !is.na(c_vals[i])) field_mat[r_vals[i], c_vals[i]] <- df$Value_To_Plot[i]
   }
 
-  # 3. PLOTTING
-  # ---------------------------------------------------------
-  # Layout: Main Plot (4 parts) + Legend (1 part)
   layout(matrix(1:2, ncol=2), widths = c(4, 1))
-
-  # --- A. The Field Map ---
   par(mar = c(3, 3, 3, 1))
 
-  # Flip matrix so Row 1 is visually at the Top
-  field_rev <- field_mat[n_r:1, ]
-
-  # Palette: Diverging for Residuals, Sequential for Yield
-  # If values cross 0 (like residuals), use Red-Blue. Else Spectral.
   is_diverging <- (min(vals, na.rm=TRUE) < 0 && max(vals, na.rm=TRUE) > 0)
+  cols <- if(is_diverging) hcl.colors(20, "Blue-Red 3") else hcl.colors(20, "Spectral", rev = TRUE)
 
-  if(is_diverging) {
-    cols <- hcl.colors(20, "Blue-Red 3")
-  } else {
-    cols <- hcl.colors(20, "Spectral", rev = TRUE)
-  }
-
-  # 1. Draw empty plot to set up coordinates
-  image(1:n_c, 1:n_r, t(field_rev), axes = FALSE, col = NA,
-        xlab = "", ylab = "", main = main_title)
-
-  # 2. Draw Background (Grey) for Missing Data
-  # rect(xleft, ybottom, xright, ytop)
-  # We cover the whole grid. The image() on top will paint over valid data.
+  field_rev <- field_mat[n_r:1, ]
+  image(1:n_c, 1:n_r, t(field_rev), axes = FALSE, col = NA, main = main_title, xlab="", ylab="")
   rect(0.5, 0.5, n_c + 0.5, n_r + 0.5, col = "grey90", border = NA)
-
-  # 3. Draw Data
   image(1:n_c, 1:n_r, t(field_rev), add = TRUE, col = cols)
-
-  # Axes
-  axis(1, cex.axis = 0.7, tick = FALSE, line = -0.5); mtext(col, side=1, line=1.5, cex=0.8)
-  axis(2, at = 1:n_r, labels = rev(1:n_r), cex.axis = 0.7, tick = FALSE, line = -0.5); mtext(row, side=2, line=1.5, cex=0.8)
   box()
 
-  # --- B. The Scale Bar (Fixed) ---
   par(mar = c(3, 0, 3, 3))
-
-  # Create a dummy matrix for the legend strip (1 column, 20 rows)
-  legend_strip <- t(as.matrix(1:20))
-
-  image(1, 1:20, legend_strip, axes = FALSE, xlab = "", ylab = "", col = cols)
-
-  # Calculate Ticks based on Data Range
-  min_v <- min(vals, na.rm = TRUE)
-  max_v <- max(vals, na.rm = TRUE)
-
-  # Generate "pretty" label values
-  pretty_vals <- pretty(c(min_v, max_v), n = 5)
-
-  # Map these values to the 1-20 coordinate system of the legend image
-  # Position = (Value - Min) / Range * 19 + 1
-  at_locs <- (pretty_vals - min_v) / (max_v - min_v) * 19 + 1
-
-  # Draw axis
-  axis(4, at = at_locs, labels = pretty_vals, las = 1, cex.axis = 0.8)
-
-  # Add "Missing" indicator
-  mtext("Grey = Missing", side = 1, line = 1, cex = 0.6, col = "grey50")
-
-  # Reset layout
+  image(1, 1:20, t(as.matrix(1:20)), axes = FALSE, xlab = "", ylab = "", col = cols)
+  axis(4, at = pretty(1:20, n=5), labels = round(pretty(range(vals, na.rm=T), n=5), 2), las = 1)
+  mtext("Grey = Missing", side = 1, line = 1, cex = 0.6)
   layout(1)
 }

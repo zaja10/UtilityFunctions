@@ -1,3 +1,6 @@
+# ==============================================================================
+# CORE EXTRACTION ENGINE
+# ==============================================================================
 
 #' Extract and Rotate Factor Analytic Model Parameters
 #'
@@ -96,12 +99,14 @@ fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
   # 2. IDENTIFY PREFIX --------------------------------------------------------
   actual_term_prefix <- NULL
   if (!is_rr) {
+    # Standard FA: Look for !var
     psi_candidates <- grep(paste0(site_col, ".*!var$"), vc_names, value = TRUE)
     if(length(psi_candidates) == 0) stop(paste("Could not find !var for site:", site_col))
     actual_term_prefix <- strsplit(psi_candidates[1], "!")[[1]][1]
   } else {
+    # Reduced Rank: Look for loadings (!rr_1)
     load_candidates <- grep(paste0(site_col, ".*!(rr|fa)[_]?1"), vc_names, value = TRUE)
-    if(length(load_candidates) == 0) stop(paste("Could not find loadings for site:", site_col))
+    if(length(load_candidates) == 0) stop(paste("Could not find RR loadings for site:", site_col))
     actual_term_prefix <- strsplit(load_candidates[1], "!")[[1]][1]
   }
   term_regex <- gsub("\\(", "\\\\(", actual_term_prefix) %>% gsub("\\)", "\\\\)", .)
@@ -130,21 +135,27 @@ fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
   } else {
     if (!is.null(psi_term)) {
       cat("-> Hunting for specific variances...\n")
-      # Exclude RR rows
+      # Identify candidate rows (exclude RR term)
       candidate_rows <- vc_names[!grepl(paste0("^", term_regex, "!"), vc_names)]
       sites_to_find <- rownames(lambda_mat)
       found_psi <- list()
 
       for(site in sites_to_find) {
-        # Look for site name at end of string
+        # Regex: Ends with (underscore or !) + SiteName + (optional !var) + End of String
+        # This catches "diag(Site):Gen!Site_01" AND "diag(Site):Gen!Site_01!var"
         site_pat <- paste0("(_|!)", site, "(!var)?$")
         match <- grep(site_pat, candidate_rows, value = TRUE)
+
         if(length(match) > 0) {
           idx <- which(vc_names == match[1]) # Take first match
           found_psi[[site]] <- data.frame(Site = site, Psi = vc[idx, "component"])
         }
       }
-      psi_df <- do.call(rbind, found_psi)
+      if(length(found_psi) > 0) {
+        psi_df <- do.call(rbind, found_psi)
+      } else {
+        stop("Could not find specific variances for your sites.")
+      }
     } else {
       psi_df <- data.frame(Site = rownames(lambda_mat), Psi = 0)
     }
@@ -213,28 +224,80 @@ fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
 }
 
 
+# ==============================================================================
+# S3 METHODS (Print & Summary)
+# ==============================================================================
 
-#' Print Method
+#' Print Method for FA Object
 #' @export
 print.fa_asreml <- function(x, ...) {
-  cat(sprintf("\n=== FACTOR ANALYTIC REPORT ===\nSites: %d, Factors: %d\n",
-              nrow(x$loadings$rotated), x$meta$k))
-  diag(x$matrices$Cor) <- NA
-  cat(sprintf("Mean VAF: %.1f%%, Mean Cor: %.2f\n",
-              mean(x$var_comp$vaf$VAF, na.rm=T), mean(x$matrices$Cor, na.rm=T)))
-  if(!is.null(x$fast)) print(head(x$fast, 5))
+  k <- x$meta$k
+  n_sites <- nrow(x$loadings$rotated)
+
+  cor_mat <- x$matrices$Cor
+  diag(cor_mat) <- NA
+  mean_r <- mean(cor_mat, na.rm = TRUE)
+  mean_vaf <- mean(x$var_comp$vaf$VAF, na.rm = TRUE)
+
+  cat("\n=== FACTOR ANALYTIC REPORT (ASRemlFAST) ===\n")
+  cat(sprintf(" Model Type: %s\n", x$meta$type))
+  cat(sprintf(" Dimensions: %d Sites, %d Factors\n", n_sites, k))
+  cat(sprintf(" Rotation  : SVD (PC Solution)\n"))
+  cat("\n--- Diagnostics ---\n")
+  cat(sprintf(" Mean Genetic VAF: %.1f%%\n", mean_vaf))
+  cat(sprintf(" Mean Genetic Cor: %.2f\n", mean_r))
+
+  if(!is.null(x$fast)) {
+    cat("\n--- Top 5 Genotypes (by OP) ---\n")
+    print(format(head(x$fast[, c("Genotype", "OP", "RMSD")], 5), digits = 3), row.names = FALSE)
+  } else {
+    cat("\n(Genotype scores not found - FAST indices unavailable)\n")
+  }
+  cat("===========================================\n")
 }
 
-
-
-#' Summary Method
+#' Summary Method for FA Object
 #' @export
 summary.fa_asreml <- function(object, ...) {
-  ld <- object$loadings$rotated; G_d <- diag(object$matrices$G)
-  s_stats <- data.frame(Site = rownames(ld))
-  for(i in 1:object$meta$k) s_stats[[paste0("VAF_F", i)]] <- round((ld[,i]^2/G_d)*100, 1)
-  s_stats$Total_VAF <- rowSums(s_stats[,-1]); s_stats$Fac1 <- round(ld[,1],3)
+  loadings <- object$loadings$rotated
+  G_diag <- diag(object$matrices$G)
+  k <- object$meta$k
 
-  g_stats <- if(!is.null(object$fast)) object$fast else NULL
-  list(site_stats = s_stats[order(s_stats$Total_VAF, decreasing=T),], genotypes = g_stats)
+  # Build Site Stats with breakdown per factor
+  site_stats <- data.frame(Site = rownames(loadings))
+  for(i in 1:k) {
+    vaf_k <- (loadings[, i]^2 / G_diag) * 100
+    site_stats[[paste0("VAF_Fac", i)]] <- round(vaf_k, 1)
+  }
+  site_stats$Total_VAF <- rowSums(site_stats[, 2:(k+1)])
+  site_stats$Fac1_Load <- round(loadings[, 1], 3)
+
+  gen_stats <- NULL
+  if(!is.null(object$fast)) {
+    gen_stats <- object$fast
+    gen_stats$Rank_OP <- rank(-gen_stats$OP)
+    gen_stats <- gen_stats[, c("Rank_OP", "Genotype", "OP", "RMSD")]
+  }
+
+  res <- list(
+    site_stats = site_stats[order(site_stats$Total_VAF, decreasing = TRUE), ],
+    genotypes = gen_stats,
+    correlations = round(object$matrices$Cor, 3),
+    meta = object$meta
+  )
+
+  class(res) <- "summary.fa_asreml"
+  return(res)
+}
+
+#' Print Method for Summary
+#' @export
+print.summary.fa_asreml <- function(x, ...) {
+  cat("--- Site Statistics (Top 5 by Total VAF) ---\n")
+  print(head(x$site_stats, 5), row.names = FALSE)
+
+  if(!is.null(x$genotypes)) {
+    cat("\n--- Genotype Selection (Top 5 by OP) ---\n")
+    print(head(x$genotypes, 5), row.names = FALSE)
+  }
 }

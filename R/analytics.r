@@ -1,3 +1,9 @@
+# ==============================================================================
+# ANALYTICS & DIAGNOSTICS ENGINE
+# This file contains tools for Pre-Analysis Checks (Connectivity),
+# Post-Analysis Optimization (D-Optimality, Interaction Classes),
+# and Selection Decision Support (Indices).
+# ==============================================================================
 
 #' Check Trial Network Connectivity
 #'
@@ -18,7 +24,8 @@
 #'
 #' @return A list containing:
 #' \describe{
-#'   \item{matrix}{The Site x Site connectivity matrix (counts of shared lines).}
+#'   \item{matrix_count}{The Site x Site connectivity matrix (counts of shared lines).}
+#'   \item{matrix_pct}{The connectivity matrix as percentages (Jaccard Index).}
 #'   \item{disconnects}{A dataframe listing specific site pairs that fell below the threshold.}
 #' }
 #'
@@ -26,7 +33,7 @@
 #' The function also generates a heatmap plot of the connectivity matrix immediately
 #' upon execution to provide visual verification of the trial network structure.
 #'
-#' @importFrom graphics image axis text par
+#' @importFrom graphics image axis text par layout mtext
 #' @importFrom grDevices hcl.colors
 #' @export
 check_connectivity <- function(data, genotype = "Genotype", trial = "Site", threshold = 10) {
@@ -93,11 +100,30 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
     }
   }
 
-  # Plot Scale Bar
+  # Plot Scale Bar (FIXED LOGIC)
   par(mar = c(6, 0, 4, 3))
-  legend_vals <- seq(min(connect_mat), max(connect_mat), length.out = 20)
-  image(1, 1:20, t(as.matrix(legend_vals)), axes = FALSE, xlab = "", ylab = "", col = cols)
-  axis(4, at = pretty(1:20), labels = round(pretty(legend_vals)), las = 1, cex.axis = 0.8)
+
+  # Dummy strip 1-20
+  legend_strip <- t(as.matrix(1:20))
+  image(1, 1:20, legend_strip, axes = FALSE, xlab = "", ylab = "", col = cols)
+
+  # Calculate Ticks based on Data Range
+  min_v <- min(connect_mat)
+  max_v <- max(connect_mat)
+
+  # Generate "pretty" label values based on actual data
+  pretty_vals <- pretty(c(min_v, max_v), n = 5)
+
+  # Map these values to the 1-20 coordinate system of the legend image
+  # Position = (Value - Min) / Range * 19 + 1
+  if (max_v > min_v) {
+    at_locs <- (pretty_vals - min_v) / (max_v - min_v) * 19 + 1
+  } else {
+    at_locs <- 10 # Center if constant
+  }
+
+  # Draw axis
+  axis(4, at = at_locs, labels = pretty_vals, las = 1, cex.axis = 0.8)
   mtext("Count", side=4, line=2, cex=0.7)
 
   # Reset layout
@@ -105,6 +131,7 @@ check_connectivity <- function(data, genotype = "Genotype", trial = "Site", thre
 
   return(list(matrix_count = connect_mat, matrix_pct = pct_mat, disconnects = disconnects))
 }
+
 
 
 #' Calculate D-Optimality (Network Efficiency)
