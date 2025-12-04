@@ -112,7 +112,7 @@ plot(fa_results, type = "latent_reg", factor = 2)
 | get_i_classes() | Partitions environments into "Positive" and "Negative" classes based on a GxE driver (Factor k\>1) to detect crossover interactions. | plot(..., type = "diff") |
 | plot_spatial() | Maps raw data or residuals onto the physical field layout (Row/Column coordinates) for spatial diagnostic checks. | N/A (Dedicated function) |
 
-: **Examples**
+**Examples**
 
 ```{r}
 # Check trial connectivity
