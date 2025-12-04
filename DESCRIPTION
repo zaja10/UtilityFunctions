@@ -1,7 +1,7 @@
 Package: UtilityFunctions
 Title: Factor Analytic Model Extraction and Selection Tools
 Version: 1.1.0
-Authors@R: person("Cereals", "Quant Genius", email = "genius@breeding.com", role = c("aut", "cre"))
+Authors@R: person("Zachary Aldiss", email = "zaldiss@illinois.edu", role = c("aut", "cre"))
 Description: A utility suite for processing Factor Analytic (FA) models fitted in 
     ASReml-R. Implements the Smith & Cullis (2018) Factor Analytic Selection 
     Tools (FAST), including Overall Performance (OP), Stability (RMSD), Latent 
