@@ -23,6 +23,6 @@
 #' Assumes parents are fully homozygous inbred lines.
 #' 
 calc_cross_variance_cpp <- function(p1, p2, effects, map) {
-    .Call(`_GenomicFlow_calc_cross_variance_cpp`, p1, p2, effects, map)
+    .Call(`_UtilityFunctions_calc_cross_variance_cpp`, p1, p2, effects, map)
 }
 

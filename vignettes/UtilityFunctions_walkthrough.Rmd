@@ -1,8 +1,8 @@
 ---
-title: "GenomicFlow: Complete Workflow"
+title: "UtilityFunctions: Complete Workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{GenomicFlow: Complete Workflow}
+  %\VignetteIndexEntry{UtilityFunctions: Complete Workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -18,7 +18,7 @@ knitr::opts_chunk$set(
 
 # Introduction
 
-**GenomicFlow** provides a robust suite of tools for analyzing Multi-Environment Trial (MET) data. It implements the "Design Tableau" for structural validation, a wrapper for ASReml-R Factor Analytic models, and the Smith & Cullis (2018) selection tools (FAST).
+**UtilityFunctions** provides a robust suite of tools for analyzing Multi-Environment Trial (MET) data. It implements the "Design Tableau" for structural validation, a wrapper for ASReml-R Factor Analytic models, and the Smith & Cullis (2018) selection tools (FAST).
 
 This vignette demonstrates:
 1.  **Design Tableau**: Validating trial structure.
@@ -29,7 +29,7 @@ This vignette demonstrates:
 *Note: This vignette requires the `asreml` package and a valid license.*
 
 ```{r setup}
-library(GenomicFlow)
+library(UtilityFunctions)
 library(tidyverse)
 # library(asreml) # Required for model fitting
 library(agridat) # For the example dataset
@@ -45,54 +45,53 @@ df <- dasilva.maize
 head(df)
 ```
 
-## 1. Design Tableau (Structural Validation)
-
-Before fitting models, we validate the data structure using `build_design_tableau`. This checks for issues like aliasing between Reps and Environments.
+## 1. Design Diagnostics
+Before analysis, we validate the data structure using `diagnose_design`. This checks for issues like aliasing between Reps and Sites.
 
 ```{r tableau}
-# Define the Treatment and Plot Structure
-# Treatment: Genotype
-# Plot: Env/Rep (Rep nested within Env)
-tableau <- build_design_tableau(
+# Check structure
+diag_report <- diagnose_design(
   data = df,
-  plot_formula = ~ env:rep
+  genotype = "gen",
+  trial = "env",
+  rep = "rep"
 )
 
-print(tableau)
+print(diag_report)
 ```
 
-## 2. Fit the Smart Model
-
-We use `fit_met_model` to fit a Factor Analytic model (FA2) to the `tableau`. This function wraps `asreml()` and performs post-hoc rotation (Varimax or PC).
+## 2. Fit Model (ASReml)
+Fit a standard Factor Analytic model using ASReml-R. 
 
 ```{r, eval = FALSE}
-# This block requires ASReml
-model_fa <- fit_met_model(
-  object = tableau,
-  k = 2,
-  genotype = "gen",
-  site = "env",
-  rotation = "varimax",
-  response = "yield", # Specify the response variable
-  residual = ~ dsum(~ id(units) | env) # Heterogeneous residuals
+# Standard ASReml Call
+# fa(env, 2):gen fits a Factor Analytic model of order 2
+model_fit <- asreml(
+  fixed = yield ~ env,
+  random = ~ fa(env, 2):gen + rep:env,
+  residual = ~ dsum(~ id(units) | env),
+  data = df
 )
-
-# If you already have a fitted asreml object, you can extract parameters:
-# model_fa <- fit_met_model(existing_asreml_obj, k=2, rotation="varimax")
 ```
 
-*For the purpose of this vignette, we will simulate the structure of a result object if `asreml` is not present.*
+## 3. Post-Processing (FAST)
+Use `fa.asreml` to extract parameters, perform rotation, and calculate selection indices.
+
+```{r, eval = FALSE}
+# Extract & Rotate (Varimax)
+# 'classify' must match the FA term in the model
+model_fa <- fa.asreml(model_fit, classify = "fa(env, 2):gen", rotation = "varimax")
+```
 
 ```{r sim_results, include=FALSE}
 # Mock object for rendering the vignette without ASReml license
-# (In real usage, this comes from fit_met_model)
 sites <- levels(df$env)
 gens <- levels(df$gen)
 
-# Simulate Factor Loadings (Varimax-like structure)
+# Simulate Factor Loadings (Varimax-like)
 lam <- matrix(rnorm(length(sites) * 2, 0.5, 0.2), ncol = 2)
 rownames(lam) <- sites
-lam[, 2] <- runif(length(sites), -0.5, 0.5) # Factor 2 interaction
+lam[, 2] <- runif(length(sites), -0.5, 0.5)
 
 # Simulate Scores
 sco <- matrix(rnorm(length(gens) * 2), ncol = 2)
@@ -100,7 +99,7 @@ rownames(sco) <- gens
 
 # FAST Indices
 op <- sco[, 1] * mean(lam[, 1])
-rmsd <- abs(sco[, 2] * 0.5) # Toy RMSD
+rmsd <- abs(sco[, 2] * 0.5)
 
 res_obj <- list(
   loadings = list(rotated = lam),

@@ -1,49 +1,52 @@
-# GenomicFlow
+# UtilityFunctions
 
-**Genomic Selection and Factor Analytic Tools for Plant Breeding**
+**Factor Analytic Model Extraction and Selection Tools**
 
-`GenomicFlow` (formerly `UtilityFunctions`) is a comprehensive suite for analyzing Multi-Environment Trials (MET) and predicting cross utility in breeding programs.
+`UtilityFunctions` provides a specialized suite for post-processing Factor Analytic (FA) models in plant breeding. It decouples the analysis integration, allowing you to fit models with `ASReml-R` and use this package for:
 
-It unifies the analysis pipeline:
-
-1.  **Structure**: The `Design Tableau` validates your trial design before analysis.
-2.  **Solver**: `fit_met_model` wraps `ASReml-R` to fit Factor Analytic (FA) models and automatically rotates parameters.
-3.  **Selection**: Implements "FAST" (Factor Analytic Selection Tools) for variety advancement (OP & RMSD).
-4.  **Prediction**: Uses a C++ backend to predict the utility of crosses (Mean + Variance) from genomic data.
+1.  **Structure**: `diagnose_design` validates experimental design.
+2.  **Extraction**: `fa.asreml` extracts and rotates parameters from fitted models.
+3.  **Selection**: "FAST" indices for variety advancement (OP & RMSD).
+4.  **Prediction**: Rank crosses using gametic variance ($UC = \mu + i\sigma_g$).
 
 ## Installation
 
 ```r
 # Install from GitHub
-devtools::install_github("zaja10/GenomicFlow")
+devtools::install_github("zaja10/UtilityFunctions")
 ```
 
 _Requires `asreml` for model fitting._
 
 ## Basic Workflow
 
-### 1. Structural Validation (Design Tableau)
+### 1. Structural Validation
 
 Ensure your data structure (Rep nesting, Aliasing) is correct.
 
 ```r
-library(GenomicFlow)
+library(UtilityFunctions)
 library(agridat)
 
-tableu <- build_design_tableau(dasilva.maize, ~ gen, ~ env/rep)
-print(tableu)
+diag_report <- diagnose_design(dasilva.maize, genotype="gen", trial="env", rep="rep")
+print(diag_report)
 ```
 
-### 2. Smart Selection (FAST)
+### 2. Fit Model & Extract (FAST)
 
-Fit an FA2 model and select stable, high-performing varieties.
+Fit an FA2 model using ASReml, then extract rotated solution.
 
 ```r
-# Fit Model (Wrapper for asreml)
-model <- fit_met_model(tableu, k=2, genotype="gen", site="env", rotation="varimax")
+# 1. Fit Model (Standard ASReml)
+model <- asreml(fixed = yield ~ env,
+                random = ~ fa(env, 2):gen,
+                data = dasilva.maize)
 
-# Visualization: OP vs RMSD
-plot(model, type = "fast")
+# 2. Extract & Rotate
+results <- fa.asreml(model, classify = "fa(env, 2):gen", rotation = "varimax")
+
+# 3. Visualization: OP vs RMSD
+plot(results, type = "fast")
 ```
 
 ### 3. Cross Prediction

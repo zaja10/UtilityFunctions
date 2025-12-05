@@ -2,97 +2,54 @@
 # SMART SOLVER & EXTRACTION ENGINE
 # ==============================================================================
 
-#' Fit and Extract Multi-Environment Trial (MET) Models
+#' Extract and Rotate Factor Analytic Model Parameters
 #'
 #' @description
-#' The core engine of GenomicFlow. It fits a Factor Analytic (FA) model using ASReml-R
-#' based on a `design_tableau` structure, or extracts parameters from an already fitted model.
+#' Parses a fitted ASReml-R model object to extract loadings, scores (BLUPs), and
+#' specific variances from a Factor Analytic (FA) or Reduced Rank (RR) model term.
 #'
-#' It performs post-analysis rotation (SVD/PC or Varimax) to align loadings for biological
-#' interpretation and selection.
+#' It performs a post-hoc rotation (SVD/PC or Varimax) to align the solution
+#' for biological interpretation and selection.
 #'
-#' @param object A `design_tableau` object (for fitting) OR a fitted `asreml` object (for extraction).
-#' @param k Integer. Number of factors for the FA model (default 1).
-#' @param genotype Character. Column name of the Genotype variable (required if fitting).
-#' @param site Character. Column name of the Site/Environment variable (required if fitting).
+#' @param model A fitted object of class \code{asreml}.
+#' @param classify A character string defining the FA term, e.g., "fa(Site, 2):Genotype".
+#'        This is used to identify the relevant variance components.
 #' @param rotation Character. Rotation method: "pc" (Principal Component/SVD) or "varimax".
-#' @param ... Additional arguments passed to \code{asreml()}.
+#' @param psi_term Character. Optional specific variance term for RR models.
 #'
 #' @return An object of class \code{fa_asreml} containing loadings, scores, and FAST indices.
 #' @importFrom stats coef varimax
 #' @export
-fit_met_model <- function(object, k = 1, genotype = NULL, site = NULL, rotation = "pc", response = NULL, ...) {
-  model <- NULL
-
-  # 1. FIT MODE (if object is design_tableau)
-  if (inherits(object, "design_tableau")) {
-    if (!requireNamespace("asreml", quietly = TRUE)) {
-      stop("ASReml-R is required for fitting models. Please install it.")
-    }
-
-    if (is.null(genotype) || is.null(site)) stop("Must specify 'genotype' and 'site' column names for fitting.")
-
-    cat("--- Fitting MET Model with ASReml ---\n")
-
-    # Construct FA Term: fa(Site, k):Genotype
-    fa_term <- paste0("fa(", site, ", ", k, "):", genotype)
-
-    # Random Formula: Tableau Random + FA Term
-    rand_form <- stats::update(object$formulas$random, paste("~ . +", fa_term))
-
-    # Fixed Formula handling
-    fix_form <- object$formulas$fixed
-
-    # If response is provided, prepend it to the formula
-    if (!is.null(response)) {
-      # Check if formula already has a response
-      if (length(fix_form) == 3) {
-        warning("Fixed formula already has a response variable. Ignoring 'response' argument.")
-      } else {
-        fix_form <- stats::update(fix_form, paste(response, "~ ."))
-      }
-    }
-
-    # Validation: Ensure fixed formula has a response
-    if (length(fix_form) < 3) {
-      stop("Fixed formula must have a response variable (e.g., 'yield ~ ...'). Please provide 'response' argument.")
-    }
-
-    # Prepare arguments
-    args <- list(...)
-    # Default residual if not provided
-    if (!"residual" %in% names(args)) {
-      # A common MET residual is ~ dsum(~id(units)|Site)
-    }
-
-    call_args <- c(
-      list(
-        fixed = fix_form,
-        random = rand_form,
-        data = object$data
-      ),
-      args
-    )
-
-    model <- do.call(asreml::asreml, call_args)
-
-    if (!model$converge) warning("ASReml model did not converge.")
-  } else if (inherits(object, "asreml")) {
-    # 2. EXTRACT MODE (legacy support)
-    model <- object
-  } else {
-    stop("Object must be of class 'design_tableau' or 'asreml'.")
+fa.asreml <- function(model, classify, rotation = "pc", psi_term = NULL) {
+  if (!inherits(model, "asreml")) {
+    stop("Input 'model' must be a fitted asreml object.")
   }
 
-  # 3. EXTRACTION LOGIC
-  # We use the robust extraction logic adapted from the original fa.asreml
+  cat("--- Extracting FA Parameters ---\n")
+
+  # Parse Classify String to get Dimensions
+  # Expected syntax: "fa(Site, 2):Genotype" or similar
+  clean_str <- gsub("\\s+", "", classify)
+  parts <- strsplit(clean_str, ":")[[1]]
+  latent_part <- parts[grep("(fa|rr)\\(", parts)]
+  gen_part_raw <- parts[grep("(fa|rr)\\(", parts, invert = TRUE)]
+
+  if (length(latent_part) == 0) stop("Could not parse FA/RR term from 'classify'.")
+
+  site_col <- sub("(fa|rr)\\(([^,]+),.*", "\\2", latent_part) # Corrected to extract the site factor name
+  k <- as.numeric(sub(".*,([0-9]+)\\).*", "\\1", latent_part))
+
+  model_type <- if (grepl("rr\\(", latent_part)) "Reduced Rank (RR)" else "Factor Analytic (FA)"
+  cat(sprintf("-> Type: %s | Site: '%s' | Factors: %d\n", model_type, site_col, k))
+
+  # 1. EXTRACTION
   extracted <- .extract_fa_components(model, k)
 
   lambda_mat <- extracted$loadings
   f_mat <- extracted$scores
   psi_df <- extracted$psi
 
-  # 4. ROTATION
+  # 2. ROTATION
   cat(sprintf("-> Applying Rotation: %s\n", rotation))
 
   lambda_rot <- lambda_mat
@@ -127,7 +84,7 @@ fit_met_model <- function(object, k = 1, genotype = NULL, site = NULL, rotation 
 
   colnames(lambda_rot) <- colnames(f_rot) <- paste0("Fac", 1:k)
 
-  # 5. CONSTRUCT OUTPUT
+  # 3. CONSTRUCT OUTPUT
   # Re-calculate G and Cor based on rotated solution
   # (Psi is invariant to rotation)
   common_sites <- intersect(rownames(lambda_rot), psi_df$Site)
@@ -163,7 +120,7 @@ fit_met_model <- function(object, k = 1, genotype = NULL, site = NULL, rotation 
     matrices = list(G = G_est, Cor = C_est),
     fast = fast_df,
     rotation_matrix = rot_mat,
-    meta = list(k = k, rotation = rotation)
+    meta = list(k = k, rotation = rotation, type = model_type)
   )
 
   class(out) <- "fa_asreml"

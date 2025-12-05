@@ -12,7 +12,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 
 // calc_cross_variance_cpp
 double calc_cross_variance_cpp(NumericVector p1, NumericVector p2, NumericVector effects, NumericVector map);
-RcppExport SEXP _GenomicFlow_calc_cross_variance_cpp(SEXP p1SEXP, SEXP p2SEXP, SEXP effectsSEXP, SEXP mapSEXP) {
+RcppExport SEXP _UtilityFunctions_calc_cross_variance_cpp(SEXP p1SEXP, SEXP p2SEXP, SEXP effectsSEXP, SEXP mapSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -26,11 +26,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_GenomicFlow_calc_cross_variance_cpp", (DL_FUNC) &_GenomicFlow_calc_cross_variance_cpp, 4},
+    {"_UtilityFunctions_calc_cross_variance_cpp", (DL_FUNC) &_UtilityFunctions_calc_cross_variance_cpp, 4},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_GenomicFlow(DllInfo *dll) {
+RcppExport void R_init_UtilityFunctions(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

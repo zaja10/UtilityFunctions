@@ -1,103 +1,82 @@
-#' Build Design Tableau
+#' Diagnose Trial Design Structure
 #'
 #' @description
-#' Creates a `design_tableau` object that encapsulates the structural design of a Multi-Environment Trial (MET).
-#' This object validates the experimental design structure and formats the model formulas for the solver.
+#' Analyzes the experimental design of a dataset to check for connectivity, balance,
+#' and aliasing between structural factors (e.g., Reps nested within Sites).
 #'
 #' @param data A dataframe containing the trial data.
-#' @param treatment_formula A formula specifying the fixed effects (e.g., ~ Genotype).
-#' @param plot_formula A formula specifying the randomization structure (e.g., ~ Site/Rep/Block).
+#' @param genotype Character. Column name for Genotype.
+#' @param trial Character. Column name for Trial/Environment.
+#' @param rep Character. Column name for Replicate/Block (Optional).
 #'
-#' @return A `design_tableau` object (S3 class) containing:
+#' @return A `design_diagnosis` object (S3 class) containing:
 #' \describe{
-#'   \item{data}{The original dataframe.}
-#'   \item{formulas}{A list containing `fixed` and `random` formulas.}
-#'   \item{structure}{A summary of the design levels.}
-#'   \item{aliasing}{Aliasing diagnostics.}
+#'   \item{structure}{Counts of levels for key factors.}
+#'   \item{connectivity}{Connectivity matrix (shared genotypes) between sites.}
+#'   \item{aliasing}{Check if Reps are nested within Sites (Recycled vs Unique coding).}
+#'   \item{balance}{Summary of missing plots.}
 #' }
 #'
-#' @details
-#' This function performs critical structural checks before model fitting:
-#' \itemize{
-#'   \item Checks if variables exist in data.
-#'   \item Detects if factors are typically nested (e.g., Rep within Site).
-#'   \item Validates that the provided formula accounts for the data structure.
-#' }
-#'
-#' @importFrom stats terms model.frame
 #' @export
-build_design_tableau <- function(data, treatment_formula, plot_formula) {
-    # 1. Validation: Check Variable Existence
-    tf_vars <- all.vars(treatment_formula)
-    pf_vars <- all.vars(plot_formula)
-    all_vars <- c(tf_vars, pf_vars)
-
-    missing_vars <- setdiff(all_vars, names(data))
-    if (length(missing_vars) > 0) {
-        stop(paste("Variables not found in data:", paste(missing_vars, collapse = ", ")))
+diagnose_design <- function(data, genotype, trial, rep = NULL) {
+    if (!all(c(genotype, trial) %in% names(data))) {
+        stop("Specified columns not found in data.")
     }
 
-    # 2. Structural Diagnostics
-    structural_summary <- list()
-    for (v in all_vars) {
-        if (is.character(data[[v]]) || is.factor(data[[v]])) {
-            structural_summary[[v]] <- length(unique(data[[v]]))
-        }
-    }
+    # 1. Structural Counts
+    n_gen <- length(unique(data[[genotype]]))
+    n_site <- length(unique(data[[trial]]))
+    counts <- list(Genotypes = n_gen, Sites = n_site)
 
-    # 3. Aliasing / Nesting Checks
-    # Heuristic: If we have >1 Site, check if "Rep" or "Block" is functionally nested
-    # (i.e., Rep 1 at Site A is different physical entity than Rep 1 at Site B)
-    aliasing_report <- list()
+    # 2. Connectivity (Mini-Implementation)
+    # Check disjoint sets
+    inc_table <- table(data[[genotype]], data[[trial]])
+    inc_mat <- as.matrix(inc_table)
+    inc_mat[inc_mat > 0] <- 1
+    con_mat <- t(inc_mat) %*% inc_mat
 
-    # Identify 'Site' or 'Env' variable (naive assumption: usually the first var in plot_formula)
-    # This is a simplification; passed formulas can be complex.
-    # We assume plot_formula is like ~ Site/Rep or ~ Site + Rep
-
-    # Extract terms
-    pf_terms <- attr(terms(plot_formula), "term.labels")
-
-    # Simple check: If multiple vars, check contingency
-    if (length(pf_vars) >= 2) {
-        v1 <- pf_vars[1] # e.g., Site
-        v2 <- pf_vars[2] # e.g., Rep
-
-        tab <- table(data[[v1]], data[[v2]])
-
-        # Check for empty cells (structural zeros might imply specific design)
-        # Check for perfect nesting: Each level of v2 appears in ONLY one level of v1?
-        # This detects if Rep is globally unique (1..N across all sites) vs Recycled (1..k per site)
-
-        # If Rep is recycled (1,2,3 at Site A, 1,2,3 at Site B), table is fully populated.
-        # If Rep is unique (1,2,3 at A, 4,5,6 at B), table is diagonal-ish.
+    # 3. Aliasing / Nesting Check
+    nesting_status <- "Unknown"
+    if (!is.null(rep) && rep %in% names(data)) {
+        # Check if Rep levels are recycled across sites
+        tbl <- table(data[[trial]], data[[rep]])
+        # If Rep 1 exists in Site A and Site B, it is likely "nested" physically but coded same
+        is_recycled <- all(colSums(tbl > 0) > 1)
+        nesting_status <- if (is_recycled) "Recycled (Nested)" else "Unique (Crossed/Implicitly Nested)"
     }
 
     # 4. Construct Object
     obj <- list(
-        data = data,
-        formulas = list(
-            fixed = treatment_formula,
-            random = plot_formula
-        ),
-        structure = structural_summary,
-        aliasing = aliasing_report
+        data_summary = counts,
+        connectivity = con_mat,
+        nesting = nesting_status,
+        call = list(genotype = genotype, trial = trial, rep = rep)
     )
 
-    class(obj) <- "design_tableau"
+    class(obj) <- "design_diagnosis"
     return(obj)
 }
 
-#' Print Design Tableau
+#' Print Design Diagnosis
 #'
-#' @param x A design_tableau object.
+#' @param x A design_diagnosis object.
 #' @param ... Additional arguments.
 #' @export
-print.design_tableau <- function(x, ...) {
-    cat("=== Design Tableau ===\n")
-    cat("Fixed Effects:  ", deparse(x$formulas$fixed), "\n")
-    cat("Random Effects: ", deparse(x$formulas$random), "\n")
-    cat("\nStructure Summary:\n")
-    print(unlist(x$structure))
+print.design_diagnosis <- function(x, ...) {
+    cat("=== Design Diagnosis ===\n")
+    cat(sprintf("Genotypes: %d | Sites: %d\n", x$data_summary$Genotypes, x$data_summary$Sites))
+    cat(sprintf("Rep Coding: %s\n", x$nesting))
+
+    # Connectivity Warning
+    disconnected <- which(x$connectivity == 0, arr.ind = TRUE)
+    # Remove self-loops and duplicates
+    disconnected <- disconnected[disconnected[, 1] < disconnected[, 2], , drop = FALSE]
+
+    if (nrow(disconnected) > 0) {
+        cat("\n[WARNING]: Use check_connectivity() to inspect disjoint sites!\n")
+    } else {
+        cat("Connectivity: Full network graph connected.\n")
+    }
 }
 
 #' Plot Design Tableau

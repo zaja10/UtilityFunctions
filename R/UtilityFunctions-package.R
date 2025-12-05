@@ -1,6 +1,6 @@
 #' @keywords internal
 "_PACKAGE"
 
-#' @useDynLib GenomicFlow, .registration = TRUE
+#' @useDynLib UtilityFunctions, .registration = TRUE
 #' @importFrom Rcpp sourceCpp
 NULL
