@@ -1,21 +1,20 @@
-Package: UtilityFunctions
-Title: Factor Analytic Model Extraction and Selection Tools
-Version: 1.1.0
+Package: GenomicFlow
+Title: Genomic Selection and Factor Analytic Tools for Plant Breeding
+Version: 1.0.0
 Authors@R: person("Zachary Aldiss", email = "zaldiss@illinois.edu", role = c("aut", "cre"))
-Description: A utility suite for processing Factor Analytic (FA) models fitted in 
-    ASReml-R. Implements the Smith & Cullis (2018) Factor Analytic Selection 
-    Tools (FAST), including Overall Performance (OP), Stability (RMSD), Latent 
-    Regression, and D-Optimality diagnostics for network optimization.
+Description: A comprehensive suite for genomic selection and trial analysis. Implements the "Design Tableau" for trial validation, wrapping ASReml-R for Factor Analytic models, and providing Factor Analytic Selection Tools (FAST) as per Smith & Cullis (2018). It also includes population development tools utilizing gametic variance.
 Depends: 
     asreml,
-    R (>= 3.5.0),
-    tidyverse
+    R (>= 3.5.0)
 Imports: 
     dplyr,
     tidyr,
     stringr,
     tibble,
-    reshape2
+    reshape2,
+    Rcpp
+LinkingTo: 
+    Rcpp
 License: MIT
 Encoding: UTF-8
 LazyData: true
@@ -25,6 +24,6 @@ Suggests:
     rmarkdown,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
-URL: https://github.com/zaja10/UtilityFunctions
-BugReports: https://github.com/zaja10/UtilityFunctions/issues
+URL: https://github.com/zaja10/GenomicFlow
+BugReports: https://github.com/zaja10/GenomicFlow/issues
 Config/testthat/edition: 3
