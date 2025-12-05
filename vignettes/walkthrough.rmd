@@ -51,11 +51,13 @@ df <- dasilva.maize
 
 # Fit FA2 Model
 # Note: We assume 'env' are environments and 'gen' are genotypes
-model_real <- asreml(fixed = yield ~ env,
-                     random = ~fa(env, 2):gen + rep,
-                     residual = ~idv(units),
-                     data = df, 
-                     trace = FALSE) # Suppress iteration output for vignette
+model_real <- asreml(
+  fixed = yield ~ env,
+  random = ~ fa(env, 2):gen + rep,
+  residual = ~ idv(units),
+  data = df,
+  trace = FALSE
+) # Suppress iteration output for vignette
 
 # Check variance components to confirm convergence
 summary(model_real)$varcomp
@@ -99,7 +101,6 @@ Visualizes why specific varieties are unstable. It "peels off" Factor 1 to show 
 
 ```{r}
 plot(fa_summary, type = "latent_reg", n_label = 3)
-
 ```
 
 #### D. The Biplot
@@ -108,7 +109,6 @@ A GGE-style overview of the Genotype + Environment space.
 
 ```{r}
 plot(fa_summary, type = "biplot")
-
 ```
 
 #### E. Site Quality (VAF)
@@ -117,7 +117,6 @@ Which sites were well explained by the model?
 
 ```{r}
 plot(fa_summary, type = "vaf")
-
 ```
 
 ### 4. Advanced Analytics: Interaction Classes
@@ -142,10 +141,13 @@ In modern breeding, we often use Genomic Relationship Matrices (GRM) to model ad
 We generate synthetic marker data, calculate a GRM, and simulate phenotypes that include spatial field trends (e.g., fertility gradients).
 
 ```{r}
-
 # 1. Generate Markers and GRM (VanRaden method)
 genomic_sim <- generate_grm(n_gen = 150, n_markers = 2000, seed = 123)
 my_grm <- genomic_sim$grm
+
+# [NEW] Validate Genomic Rigor
+# Verify the GRM is properly scaled (mean diag ~ 1) for valid Oakey estimates
+validate_grm(my_grm)
 
 # 2. Generate Phenotypes driven by this GRM + Spatial Trends
 # h2 = 0.6 indicates strong genetic signal
@@ -176,13 +178,17 @@ Spatial: Autoregressive (ar1) spatial errors on Rows and Columns.
 mod_genomic <- asreml(
   fixed = Yield ~ Site,
   random = ~ fa(Site, 2):vm(Genotype, my_grm) + Rep,
-  residual = ~Site:ar1(Row):ar1(Column), # Spatial residuals
+  residual = ~ Site:ar1(Row):ar1(Column), # Spatial residuals
   data = met_data,
   trace = FALSE
 )
 
 # One update to ensure convergence
 mod_genomic <- update(mod_genomic, trace = FALSE)
+
+# [NEW] Model Audit
+# Check if the model respects the spatial design (Row/Col terms present?)
+audit_model_terms(mod_genomic)
 ```
 
 ## 4. Spatial Diagnostics
@@ -201,7 +207,6 @@ The toolkit automatically parses the vm() wrapper to extract the correct coeffic
 
 ```{r}
 results_g <- fa.asreml(mod_genomic, classify = "fa(Site, 2):vm(Genotype, my_grm)")
-
 ```
 
 ## 6. Network Optimization (D-Optimality)
@@ -213,7 +218,6 @@ d_opt <- get_d_optimality(results_g)
 
 # Visualize Site Importance
 plot(results_g, type = "d_opt")
-
 ```
 
 7.  Genomic Selection Visuals
@@ -222,5 +226,46 @@ Finally, we view the FAST plot for the Breeding Values (Additve Effects).
 
 ```{r}
 plot(results_g, type = "fast", n_label = 5)
-
 ```
+
+# Part 3: Biometric Rigor & Site Metrics
+
+New in version 1.2: rigorous site-specific quality metrics that handle heterogeneous genetic variances.
+
+## 1. Site Repeatability
+
+We calculate the repeatability ($R = \sigma^2_g / (\sigma^2_g + \sigma^2_e)$) for each site. This metric is crucial for clonal crops or when identifying sites with high error noise.
+
+```{r}
+# Calculates R per site, automatically extracting residual variances
+rep_df <- compare_repeatability(mod_genomic, results_g)
+print(head(rep_df))
+```
+
+## 2. Heritability & Reliability Comparison
+
+We compare standard phenotypic heritability (Cullis) against genomic reliability (Oakey). The "Oakey" method is the gold standard for genomic trials as it incorporates the GRM structure.
+
+```{r}
+# Compare methods. Note: 'classify' is auto-detected from results_g
+h2_df <- compare_h2(mod_genomic, results_g,
+  grm = my_grm,
+  methods = c("Cullis", "Oakey")
+)
+
+print(head(h2_df))
+```
+
+## 3. High-Throughput Visualizations
+
+We can visualize the Genetic Variances ($V_g$) directly to see which sites have the strongest signal, and use clustered heatmaps to find Mega-Environments.
+
+```{r}
+# A. Genetic Variance Barplot
+plot(results_g, type = "h2")
+
+# B. Clustered Genetic Correlation Heatmap
+# (Hierarchical clustering groups similar environments)
+plot(results_g, type = "heatmap")
+```
+

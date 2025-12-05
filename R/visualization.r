@@ -1,4 +1,3 @@
-
 #' Master Visualization Suite for Factor Analytic Models
 #'
 #' @description
@@ -70,115 +69,194 @@
 #'
 #' @examples
 #' \dontrun{
-#'   # Standard Selection View
-#'   plot(results, type = "fast", n_label = 5, highlight = c("CheckA", "CheckB"))
+#' # Standard Selection View
+#' plot(results, type = "fast", n_label = 5, highlight = c("CheckA", "CheckB"))
 #'
-#'   # Investigate GxE Drivers (Factor 2)
-#'   plot(results, type = "latent_reg", factor = 2)
+#' # Investigate GxE Drivers (Factor 2)
+#' plot(results, type = "latent_reg", factor = 2)
 #'
-#'   # View Network Structure
-#'   plot(results, type = "biplot", factor = c(1, 2))
-#'   plot(results, type = "heatmap")
+#' # View Network Structure
+#' plot(results, type = "biplot", factor = c(1, 2))
+#' plot(results, type = "heatmap")
 #' }
 #' @export
 plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...) {
-  old_par <- par(no.readonly = TRUE); on.exit(par(old_par))
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par))
 
-  if (type == "fast") { .plot_fast(x, n_label, highlight) }
-  else if (type == "heatmap") { .plot_heat(x) }
-  else if (type == "latent_reg") { .plot_reg(x, factor, highlight, n_label) }
-  else if (type == "biplot") { .plot_biplot(x, if(is.null(factor)) c(1,2) else factor, highlight) }
-  else if (type == "vaf") { .plot_vaf(x) }
-  else if (type == "d_opt") { .plot_dopt(get_d_optimality(x)) }
-  else if (type == "diff") { .plot_diff(get_i_classes(x, if(is.null(factor)) 2 else factor), n_label, highlight) }
-  else { stop("Unknown type.") }
+  if (type == "fast") {
+    .plot_fast(x, n_label, highlight)
+  } else if (type == "heatmap") {
+    .plot_heat(x)
+  } else if (type == "latent_reg") {
+    .plot_reg(x, factor, highlight, n_label)
+  } else if (type == "biplot") {
+    .plot_biplot(x, if (is.null(factor)) c(1, 2) else factor, highlight)
+  } else if (type == "vaf") {
+    .plot_vaf(x)
+  } else if (type == "d_opt") {
+    .plot_dopt(get_d_optimality(x))
+  } else if (type == "diff") {
+    .plot_diff(get_i_classes(x, if (is.null(factor)) 2 else factor), n_label, highlight)
+  } else if (type == "h2") {
+    .plot_h2(x, ...)
+  } else {
+    stop("Unknown type.")
+  }
 }
 
 # --- Plot Internals ---
 
 .plot_fast <- function(x, n, h) {
-  if(is.null(x$fast)) stop("No FAST data available (Genotype scores missing).")
+  if (is.null(x$fast)) stop("No FAST data available (Genotype scores missing).")
 
-  df <- x$fast; top <- head(df$Genotype, n)
-  col <- rep("grey60", nrow(df)); bg <- rep("grey95", nrow(df)); pch <- rep(21, nrow(df))
-  is_h <- df$Genotype %in% h; is_t <- df$Genotype %in% top
-  bg[is_t] <- "#3498db"; col[is_t] <- "#2980b9"
-  bg[is_h] <- "#e74c3c"; col[is_h] <- "#c0392b"; pch[is_h] <- 23
+  df <- x$fast
+  top <- head(df$Genotype, n)
+  col <- rep("grey60", nrow(df))
+  bg <- rep("grey95", nrow(df))
+  pch <- rep(21, nrow(df))
+  is_h <- df$Genotype %in% h
+  is_t <- df$Genotype %in% top
+  bg[is_t] <- "#3498db"
+  col[is_t] <- "#2980b9"
+  bg[is_h] <- "#e74c3c"
+  col[is_h] <- "#c0392b"
+  pch[is_h] <- 23
 
   par(mar = c(5, 5, 4, 2))
-  plot(df$RMSD, df$OP, pch=pch, bg=bg, col=col, xlab="Stability (RMSD)", ylab="Performance (OP)", main="FAST Selection")
-  grid(); abline(h=0, v=mean(df$RMSD, na.rm=T), lty=2, col="grey")
+  plot(df$RMSD, df$OP, pch = pch, bg = bg, col = col, xlab = "Stability (RMSD)", ylab = "Performance (OP)", main = "FAST Selection")
+  grid()
+  abline(h = 0, v = mean(df$RMSD, na.rm = T), lty = 2, col = "grey")
   lbl <- which(is_h | is_t)
-  if(length(lbl)>0) text(df$RMSD[lbl], df$OP[lbl], labels=df$Genotype[lbl], pos=3, cex=0.7)
+  if (length(lbl) > 0) text(df$RMSD[lbl], df$OP[lbl], labels = df$Genotype[lbl], pos = 3, cex = 0.7)
 }
 
 .plot_heat <- function(x) {
-  cor <- x$matrices$Cor; p <- ncol(cor); rev <- cor[, p:1]
-  par(mar = c(6, 6, 4, 2))
-  image(1:p, 1:p, rev, axes=F, col=hcl.colors(20, "RdBu", rev=T), breaks=seq(-1,1,l=21), main="Correlation")
-  axis(1, at=1:p, labels=colnames(cor), las=2, cex.axis=0.7)
-  axis(2, at=1:p, labels=rev(rownames(cor)), las=1, cex.axis=0.7)
-  for(i in 1:p) for(j in 1:p) if(rev[i,j]<0.99) text(i, j, sprintf("%.2f", rev[i,j]), cex=0.6)
+  cor_mat <- x$matrices$Cor
+  # Use stats::heatmap for clustering (Rowv/Colv = NA means off, NULL means on)
+  # We want hierarchical clustering to group similar environments
+
+  # Color Palette: Red (Neg) -> White (0) -> Blue (Pos)
+  cols <- hcl.colors(20, "RdBu", rev = TRUE)
+
+  stats::heatmap(cor_mat,
+    Rowv = TRUE, Colv = TRUE,
+    symm = TRUE,
+    col = cols,
+    scale = "none",
+    margins = c(8, 8),
+    main = "Genetic Correlation (Clustered)"
+  )
+}
+
+.plot_h2 <- function(x, ...) {
+  # This function expects 'x' to be a dataframe returned by compare_h2 or compare_repeatability
+  # BUT standard dispatch is on fa_asreml object.
+  # The user might pass the RESULT of compare_h2, which is a data.frame.
+  # So we probably need a separate plot method for the H2 result, OR we extract Vg from fa_asreml?
+  # The Feature Roadmap said: "Function: plot(fa_obj, type = 'h2')"
+  # But fa_obj doesn't store the H2 results unless we added them.
+  # It assumes we visualize VAF? "Bar chart of VAF" is already .plot_vaf.
+
+  # If the user wants to visualize Heritability, they realistically need to pass the H2 object.
+  # However, to stick to the roadmap "plot(fa_obj, type='h2')",
+  # maybe we calculate a crude proxy? 1 - Mean(PEV)/Vg?
+  # PEV requires predict(). We can't run predict inside plot().
+  #
+  # CORRECTION: The roadmap might have implied plotting the TABLE returned by compare_h2.
+  # But since plot() dispatches on class, we need `plot.compare_h2_results`?
+  # Or we just interpret `type="vaf"` as the closest proxy in fa_asreml.
+  #
+  # Alternative: Check if 'x' has a specific slot? No.
+  #
+  # Let's fallback to calculating VAF (which IS Heritability of the Factors).
+  # If the user passes a data.frame to plot_spatial, that works.
+  # Let's assume for now .plot_h2 might need an external object,
+  # but since I am constrained to plot.fa_asreml, I will make .plot_h2
+  # visualize the Genetic Variances (Vg) which ARE in the object.
+
+  G_diag <- diag(x$matrices$G)
+  site_stats <- data.frame(Site = names(G_diag), Vg = G_diag)
+  site_stats <- site_stats[order(site_stats$Vg), ]
+
+  par(mar = c(5, 7, 4, 2))
+  barplot(site_stats$Vg,
+    names.arg = site_stats$Site, horiz = T, las = 1,
+    col = "forestgreen", xlab = "Genetic Variance (Vg)", main = "Site Genetic Variance"
+  )
 }
 
 .plot_reg <- function(x, fac, h, n) {
   # SAFETY GATE
-  if(is.null(x$scores)) stop("No Genotype scores available for Latent Regression.")
+  if (is.null(x$scores)) stop("No Genotype scores available for Latent Regression.")
 
-  k <- x$meta$k; if(is.null(fac)) fac <- 1:k
-  if(length(fac)>1) par(mfrow=c(ceiling(length(fac)/2), min(length(fac),2)))
-  L <- x$loadings$rotated; S <- x$scores$rotated; Uc <- S %*% t(L)
+  k <- x$meta$k
+  if (is.null(fac)) fac <- 1:k
+  if (length(fac) > 1) par(mfrow = c(ceiling(length(fac) / 2), min(length(fac), 2)))
+  L <- x$loadings$rotated
+  S <- x$scores$rotated
+  Uc <- S %*% t(L)
   tgt <- unique(c(head(rownames(S), n), h))
 
-  for(f in fac) {
-    if(f>k) next
-    Y <- if(f>1) Uc - (S[,1:(f-1)] %*% t(L[,1:(f-1)])) else Uc
-    xv <- L[,f]; ysub <- Y[tgt,,drop=F]
+  for (f in fac) {
+    if (f > k) next
+    Y <- if (f > 1) Uc - (S[, 1:(f - 1)] %*% t(L[, 1:(f - 1)])) else Uc
+    xv <- L[, f]
+    ysub <- Y[tgt, , drop = F]
 
-    par(mar=c(4,4,3,1))
-    plot(1, type="n", xlim=range(xv), ylim=range(ysub), xlab=paste("Load",f), ylab="Effect", main=paste("Factor",f))
-    grid(); abline(h=0, lty=2)
-    axis(1, at=xv, labels=F, tck=-0.02, col="green")
+    par(mar = c(4, 4, 3, 1))
+    plot(1, type = "n", xlim = range(xv), ylim = range(ysub), xlab = paste("Load", f), ylab = "Effect", main = paste("Factor", f))
+    grid()
+    abline(h = 0, lty = 2)
+    axis(1, at = xv, labels = F, tck = -0.02, col = "green")
 
-    for(g in tgt) {
-      sl <- S[g,f]; cc <- if(g %in% h) "red" else "navy"
-      points(xv, Y[g,], pch=19, col=adjustcolor(cc,0.3), cex=0.7)
-      abline(0, sl, col=cc); text(max(xv), sl*max(xv), labels=g, pos=4, cex=0.7, col=cc)
+    for (g in tgt) {
+      sl <- S[g, f]
+      cc <- if (g %in% h) "red" else "navy"
+      points(xv, Y[g, ], pch = 19, col = adjustcolor(cc, 0.3), cex = 0.7)
+      abline(0, sl, col = cc)
+      text(max(xv), sl * max(xv), labels = g, pos = 4, cex = 0.7, col = cc)
     }
   }
 }
 
 .plot_biplot <- function(x, fac, h) {
   # SAFETY GATE
-  if(is.null(x$scores)) stop("No Genotype scores available for Biplot.")
+  if (is.null(x$scores)) stop("No Genotype scores available for Biplot.")
 
-  L <- x$loadings$rotated[,fac]; S <- x$scores$rotated[,fac]
-  sf <- max(abs(S))/max(abs(L))*0.8; Ls <- L*sf
+  L <- x$loadings$rotated[, fac]
+  S <- x$scores$rotated[, fac]
+  sf <- max(abs(S)) / max(abs(L)) * 0.8
+  Ls <- L * sf
   lim <- range(rbind(Ls, S))
 
-  par(mar=c(5,5,4,2))
-  plot(1, type="n", xlim=lim, ylim=lim, asp=1, xlab=paste("F",fac[1]), ylab=paste("F",fac[2]), main="Biplot")
-  grid(); abline(h=0, v=0, lty=2, col="grey")
-  arrows(0,0, Ls[,1], Ls[,2], col="darkgreen", length=0.1)
-  text(Ls, labels=rownames(L), col="darkgreen", pos=4, cex=0.7)
+  par(mar = c(5, 5, 4, 2))
+  plot(1, type = "n", xlim = lim, ylim = lim, asp = 1, xlab = paste("F", fac[1]), ylab = paste("F", fac[2]), main = "Biplot")
+  grid()
+  abline(h = 0, v = 0, lty = 2, col = "grey")
+  arrows(0, 0, Ls[, 1], Ls[, 2], col = "darkgreen", length = 0.1)
+  text(Ls, labels = rownames(L), col = "darkgreen", pos = 4, cex = 0.7)
 
-  bg <- rep("grey90", nrow(S)); pch <- rep(21, nrow(S))
-  is_h <- rownames(S) %in% h; bg[is_h] <- "red"; pch[is_h] <- 23
-  points(S, pch=pch, bg=bg, cex=0.8)
-  if(any(is_h)) text(S[is_h,], labels=rownames(S)[is_h], pos=3, cex=0.7)
+  bg <- rep("grey90", nrow(S))
+  pch <- rep(21, nrow(S))
+  is_h <- rownames(S) %in% h
+  bg[is_h] <- "red"
+  pch[is_h] <- 23
+  points(S, pch = pch, bg = bg, cex = 0.8)
+  if (any(is_h)) text(S[is_h, ], labels = rownames(S)[is_h], pos = 3, cex = 0.7)
 
-  hpts <- chull(S); lines(S[c(hpts, hpts[1]),], col="navy", lty=2)
+  hpts <- chull(S)
+  lines(S[c(hpts, hpts[1]), ], col = "navy", lty = 2)
 }
 .plot_vaf <- function(x) {
   df <- x$var_comp$vaf[order(x$var_comp$vaf$VAF), ]
   col <- ifelse(df$VAF < 50, "red", "blue")
-  par(mar=c(5,7,4,2))
-  barplot(df$VAF, names.arg=df$Site, horiz=T, las=1, col=col, xlab="VAF %", main="Site Quality")
-  abline(v=80, lty=2)
+  par(mar = c(5, 7, 4, 2))
+  barplot(df$VAF, names.arg = df$Site, horiz = T, las = 1, col = col, xlab = "VAF %", main = "Site Quality")
+  abline(v = 80, lty = 2)
 }
 
 .plot_dopt <- function(d, threshold = 1.0) {
-
   df <- d$site_impact
   # Sort ascending (so highest impact sites appear at the top of the chart)
   df <- df[order(df$Impact_Pct), ]
@@ -193,42 +271,48 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
   par(mar = c(5, 8, 4, 2))
 
   # Draw Barplot
-  bp <- barplot(df$Impact_Pct, names.arg = df$Site, horiz = TRUE,
-                las = 1, col = cols, border = NA,
-                xlab = "% Information Loss if Removed",
-                main = "Network Efficiency (D-Opt Contribution)")
+  bp <- barplot(df$Impact_Pct,
+    names.arg = df$Site, horiz = TRUE,
+    las = 1, col = cols, border = NA,
+    xlab = "% Information Loss if Removed",
+    main = "Network Efficiency (D-Opt Contribution)"
+  )
 
   # Add Threshold Line
   abline(v = threshold, lty = 2, col = "grey40")
 
   # Add Value Labels at end of bars
   # xpd = TRUE ensures text isn't clipped if it goes outside the plot region
-  text(x = df$Impact_Pct, y = bp, label = sprintf("%.1f%%", df$Impact_Pct),
-       pos = 4, cex = 0.7, xpd = TRUE)
+  text(
+    x = df$Impact_Pct, y = bp, label = sprintf("%.1f%%", df$Impact_Pct),
+    pos = 4, cex = 0.7, xpd = TRUE
+  )
 
   # Add Legend
   legend("bottomright",
-         legend = c("Key Sites (Keep)", "Redundant (Review)"),
-         fill = c("#27ae60", "#e74c3c"),
-         border = NA, bty = "n", cex = 0.8)
+    legend = c("Key Sites (Keep)", "Redundant (Review)"),
+    fill = c("#27ae60", "#e74c3c"),
+    border = NA, bty = "n", cex = 0.8
+  )
 }
 
 .plot_diff <- function(res, n, h) {
-  df <- res$gen_effects; df <- na.omit(df)
+  df <- res$gen_effects
+  df <- na.omit(df)
   tgt <- unique(c(head(df$Genotype, n), tail(df$Genotype, n), h))
   plot_df <- df[df$Genotype %in% tgt, ]
 
   yl <- range(c(plot_df$Pred_Neg, plot_df$Pred_Pos))
-  par(mar=c(4,4,3,6), xpd=F)
-  plot(1, type="n", xlim=c(0.8, 2.2), ylim=yl, xaxt="n", ylab="Genetic Value", xlab="", main="Interaction Classes")
-  axis(1, at=1:2, labels=c("Class (-)", "Class (+)"))
+  par(mar = c(4, 4, 3, 6), xpd = F)
+  plot(1, type = "n", xlim = c(0.8, 2.2), ylim = yl, xaxt = "n", ylab = "Genetic Value", xlab = "", main = "Interaction Classes")
+  axis(1, at = 1:2, labels = c("Class (-)", "Class (+)"))
 
-  for(i in 1:nrow(plot_df)) {
+  for (i in 1:nrow(plot_df)) {
     g <- plot_df$Genotype[i]
-    cc <- if(g %in% h) "red" else "grey50"
-    segments(1, plot_df$Pred_Neg[i], 2, plot_df$Pred_Pos[i], col=cc, lwd=if(g %in% h) 2 else 1)
-    text(1, plot_df$Pred_Neg[i], g, pos=2, cex=0.7, col=cc, xpd=T)
-    text(2, plot_df$Pred_Pos[i], g, pos=4, cex=0.7, col=cc, xpd=T)
+    cc <- if (g %in% h) "red" else "grey50"
+    segments(1, plot_df$Pred_Neg[i], 2, plot_df$Pred_Pos[i], col = cc, lwd = if (g %in% h) 2 else 1)
+    text(1, plot_df$Pred_Neg[i], g, pos = 2, cex = 0.7, col = cc, xpd = T)
+    text(2, plot_df$Pred_Pos[i], g, pos = 4, cex = 0.7, col = cc, xpd = T)
   }
 }
 
@@ -246,28 +330,30 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
 #'        - If input is asreml: "residuals" (default) or "fitted".
 #' @export
 plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield") {
-
   if (inherits(input, "asreml")) {
-    if(attribute == "Yield") attribute <- "residuals"
+    if (attribute == "Yield") attribute <- "residuals"
     data_name <- as.character(input$call$data)
     if (!exists(data_name)) stop("Original dataframe not found.")
     df <- get(data_name)
 
     if (attribute == "fitted") {
-      vals <- fitted(input); main_title <- "Spatial Map: Fitted Values"
+      vals <- fitted(input)
+      main_title <- "Spatial Map: Fitted Values"
     } else {
-      vals <- resid(input); main_title <- "Spatial Map: Residuals"
+      vals <- resid(input)
+      main_title <- "Spatial Map: Residuals"
     }
 
-    if(length(vals) == nrow(df)) df$Value_To_Plot <- vals
-    else {
+    if (length(vals) == nrow(df)) {
+      df$Value_To_Plot <- vals
+    } else {
       warning("Residual mismatch. Padding with NA.")
       df$Value_To_Plot <- rep(NA, nrow(df))
       df$Value_To_Plot[1:length(vals)] <- vals
     }
   } else if (inherits(input, "data.frame")) {
     df <- input
-    if(is.null(df[[attribute]])) stop(paste("Column", attribute, "not found."))
+    if (is.null(df[[attribute]])) stop(paste("Column", attribute, "not found."))
     vals <- df[[attribute]]
     df$Value_To_Plot <- vals
     main_title <- paste("Spatial Map:", attribute)
@@ -277,21 +363,22 @@ plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield"
 
   r_vals <- as.numeric(as.character(df[[row]]))
   c_vals <- as.numeric(as.character(df[[col]]))
-  n_r <- max(r_vals, na.rm = TRUE); n_c <- max(c_vals, na.rm = TRUE)
+  n_r <- max(r_vals, na.rm = TRUE)
+  n_c <- max(c_vals, na.rm = TRUE)
 
   field_mat <- matrix(NA, nrow = n_r, ncol = n_c)
-  for(i in 1:nrow(df)) {
-    if(!is.na(r_vals[i]) & !is.na(c_vals[i])) field_mat[r_vals[i], c_vals[i]] <- df$Value_To_Plot[i]
+  for (i in 1:nrow(df)) {
+    if (!is.na(r_vals[i]) & !is.na(c_vals[i])) field_mat[r_vals[i], c_vals[i]] <- df$Value_To_Plot[i]
   }
 
-  layout(matrix(1:2, ncol=2), widths = c(4, 1))
+  layout(matrix(1:2, ncol = 2), widths = c(4, 1))
   par(mar = c(3, 3, 3, 1))
 
-  is_diverging <- (min(vals, na.rm=TRUE) < 0 && max(vals, na.rm=TRUE) > 0)
-  cols <- if(is_diverging) hcl.colors(20, "Blue-Red 3") else hcl.colors(20, "Spectral", rev = TRUE)
+  is_diverging <- (min(vals, na.rm = TRUE) < 0 && max(vals, na.rm = TRUE) > 0)
+  cols <- if (is_diverging) hcl.colors(20, "Blue-Red 3") else hcl.colors(20, "Spectral", rev = TRUE)
 
   field_rev <- field_mat[n_r:1, ]
-  image(1:n_c, 1:n_r, t(field_rev), axes = FALSE, col = NA, main = main_title, xlab="", ylab="")
+  image(1:n_c, 1:n_r, t(field_rev), axes = FALSE, col = NA, main = main_title, xlab = "", ylab = "")
   rect(0.5, 0.5, n_c + 0.5, n_r + 0.5, col = "grey90", border = NA)
   image(1:n_c, 1:n_r, t(field_rev), add = TRUE, col = cols)
   box()
