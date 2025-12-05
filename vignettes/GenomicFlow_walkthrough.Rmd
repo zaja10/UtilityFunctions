@@ -55,8 +55,7 @@ Before fitting models, we validate the data structure using `build_design_tablea
 # Plot: Env/Rep (Rep nested within Env)
 tableau <- build_design_tableau(
   data = df,
-  treatment_formula = ~gen,
-  plot_formula = ~ env / rep
+  plot_formula = ~ env:rep
 )
 
 print(tableau)
@@ -74,6 +73,7 @@ model_fa <- fit_met_model(
   genotype = "gen",
   site = "env",
   rotation = "varimax",
+  response = "yield", # Specify the response variable
   residual = ~ dsum(~ id(units) | env) # Heterogeneous residuals
 )
 

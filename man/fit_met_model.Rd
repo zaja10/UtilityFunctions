@@ -10,6 +10,7 @@ fit_met_model(
   genotype = NULL,
   site = NULL,
   rotation = "pc",
+  response = NULL,
   ...
 )
 }

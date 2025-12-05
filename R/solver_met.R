@@ -21,7 +21,7 @@
 #' @return An object of class \code{fa_asreml} containing loadings, scores, and FAST indices.
 #' @importFrom stats coef varimax
 #' @export
-fit_met_model <- function(object, k = 1, genotype = NULL, site = NULL, rotation = "pc", ...) {
+fit_met_model <- function(object, k = 1, genotype = NULL, site = NULL, rotation = "pc", response = NULL, ...) {
   model <- NULL
 
   # 1. FIT MODE (if object is design_tableau)
@@ -38,23 +38,36 @@ fit_met_model <- function(object, k = 1, genotype = NULL, site = NULL, rotation 
     fa_term <- paste0("fa(", site, ", ", k, "):", genotype)
 
     # Random Formula: Tableau Random + FA Term
-    # We assume the tableau random formula handles the design (Site/Block etc)
-    # and we append the genetic term.
-    # Note: If Tableau already has a genetic term, this might duplicate.
-    # We assume Tableau is structural only (Plot ~ Site/Block).
     rand_form <- stats::update(object$formulas$random, paste("~ . +", fa_term))
+
+    # Fixed Formula handling
+    fix_form <- object$formulas$fixed
+
+    # If response is provided, prepend it to the formula
+    if (!is.null(response)) {
+      # Check if formula already has a response
+      if (length(fix_form) == 3) {
+        warning("Fixed formula already has a response variable. Ignoring 'response' argument.")
+      } else {
+        fix_form <- stats::update(fix_form, paste(response, "~ ."))
+      }
+    }
+
+    # Validation: Ensure fixed formula has a response
+    if (length(fix_form) < 3) {
+      stop("Fixed formula must have a response variable (e.g., 'yield ~ ...'). Please provide 'response' argument.")
+    }
 
     # Prepare arguments
     args <- list(...)
     # Default residual if not provided
     if (!"residual" %in% names(args)) {
       # A common MET residual is ~ dsum(~id(units)|Site)
-      # We leave it to asreml defaults or user input for now to avoid syntax errors
     }
 
     call_args <- c(
       list(
-        fixed = object$formulas$fixed,
+        fixed = fix_form,
         random = rand_form,
         data = object$data
       ),
