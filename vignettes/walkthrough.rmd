@@ -232,12 +232,15 @@ plot(results_g, type = "fast", n_label = 5)
 
 New in version 1.2: rigorous site-specific quality metrics that handle heterogeneous genetic variances.
 
-## 1. Site Repeatability
+## 1. Site Repeatability (Model-Based)
 
-We calculate the repeatability ($R = \sigma^2_g / (\sigma^2_g + \sigma^2_e)$) for each site. This metric is crucial for clonal crops or when identifying sites with high error noise.
+We calculate the rigorous Reliability ($R$) for each site. Unlike simple variance ratios, this method uses `predict()` to obtain the **Prediction Error Variance (PEV)** of the BLUPs, providing a true measure of site quality that accounts for experimental design imbalance and specific variances.
+
+$$R_{site} = 1 - \frac{\text{PEV}_{avg}}{V_g}$$
 
 ```{r}
-# Calculates R per site, automatically extracting residual variances
+# Calculates rigorous R using PEV
+# Automatically handles predict() calls per site
 rep_df <- compare_repeatability(mod_genomic, results_g)
 print(head(rep_df))
 ```
@@ -269,3 +272,32 @@ plot(results_g, type = "h2")
 plot(results_g, type = "heatmap")
 ```
 
+
+# Part 4: Specialized Models (Reduced Rank)
+
+For advanced users fitting Reduced Rank models where specific variances are modeled separately (e.g., via `diag()`), `fa.asreml` supports flexible extraction.
+
+## Reduced Rank Extraction
+
+When fitting a model like:
+`random = ~ rr(Site, 2):Gen + diag(Site):Gen`
+
+You must explicitly tell `fa.asreml` where to find the specific variances using `psi_term`.
+
+```{r}
+# Example RR Model
+model_rr <- asreml(fixed = Yield ~ Site, 
+                   random = ~ rr(Site, 2):Gen + diag(Site):Gen, 
+                   ...)
+
+# Extraction
+# We pass psi_term to ensure the diagonal variances are captured
+results_rr <- fa.asreml(model_rr, 
+                        classify = "rr(Site, 2):Gen", 
+                        psi_term = "diag(Site):Gen")
+                        
+# Verify extraction
+print(results_rr) 
+```
+
+The toolkit matches the sites in the Reduced Rank loading matrix with the sites in the diagonal variance structure to correctly reconstruct the Genetic Covariance Matrix ($G = \Lambda\Lambda' + \Psi$).

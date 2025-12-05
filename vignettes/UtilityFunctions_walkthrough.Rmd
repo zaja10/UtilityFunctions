@@ -80,7 +80,7 @@ Use `fa.asreml` to extract parameters, perform rotation, and calculate selection
 ```{r, eval = FALSE}
 # Extract & Rotate (Varimax)
 # 'classify' must match the FA term in the model
-model_fa <- fa.asreml(model_fit, classify = "fa(env, 2):gen", rotation = "varimax")
+model_fa <- fa.asreml(model_fit, classify = "fa(env, 2):gen")
 ```
 
 ```{r sim_results, include=FALSE}

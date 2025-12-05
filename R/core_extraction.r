@@ -69,10 +69,17 @@
 #' @importFrom tibble column_to_rownames
 #' @importFrom stats coef cov2cor sd varimax
 #' @export
-fa.asreml <- function(model, classify, psi_term = NULL) {
+fa.asreml <- function(model, classify, psi_term = NULL, ...) {
   cat("--- Starting FA/RR Extraction ---\n")
 
+  # Legacy Argument Handling (Silently ignore 'rotate' or 'rotation')
+  args <- list(...)
+  if ("rotation" %in% names(args) || "rotate" %in% names(args)) {
+    # Validated: We compute all rotations automatically now.
+  }
+
   # 1. SETUP ------------------------------------------------------------------
+
   # DIAGNOSTIC: Check for Boundary Parameters
   if (!is.null(model$vparameters.con)) {
     con_codes <- model$vparameters.con
@@ -128,13 +135,14 @@ fa.asreml <- function(model, classify, psi_term = NULL) {
     rows <- grep(pat, vc_names)
     if (length(rows) == 0) next
     tmp <- data.frame(FullTerm = vc_names[rows], Value = vc[rows, "component"], Factor = i) %>%
-      mutate(Site = str_extract(FullTerm, paste0("(?<=", term_regex, "!)(.*?)(?=!(fa|rr)[_]?", i, ")")))
+      mutate(Site = str_extract(FullTerm, paste0("(?<=", term_regex, "!)(.*?)(?=!(fa|rr)[_]?", i, ")"))) %>%
+      mutate(Value = as.numeric(Value)) # Ensure numeric for pivot_wider
     lambda_df <- bind_rows(lambda_df, tmp)
   }
   if (nrow(lambda_df) == 0) stop("No loadings found.")
   lambda_mat <- lambda_df %>%
     select(Site, Factor, Value) %>%
-    pivot_wider(names_from = Factor, values_from = Value) %>%
+    pivot_wider(names_from = Factor, values_from = Value, values_fill = 0) %>%
     column_to_rownames("Site") %>%
     as.matrix()
 
@@ -181,7 +189,8 @@ fa.asreml <- function(model, classify, psi_term = NULL) {
     rows <- unique(c(grep(p1, coef_names), grep(p2, coef_names)))
     if (length(rows) > 0) {
       tmp <- data.frame(FullTerm = coef_names[rows], Value = coefs[rows, 1], Factor = i) %>%
-        mutate(Genotype = sub(paste0(".*", gen_col_name, "[:_]"), "", FullTerm))
+        mutate(Genotype = sub(paste0(".*", gen_col_name, "[:_]"), "", FullTerm)) %>%
+        mutate(Value = as.numeric(Value)) # Ensure numeric for pivot_wider
       scores_df <- bind_rows(scores_df, tmp)
     }
   }

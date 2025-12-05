@@ -1,25 +1,24 @@
 #' Compare Site-Specific Repeatability Metrics
 #'
 #' @description
-#' Calculates the repeatability ($R$) for each environment in the trial.
-#' Repeatability represents the upper limit of heritability and is defined as:
-#' \deqn{R = \frac{\sigma^2_g}{\sigma^2_g + \sigma^2_e}}
-#' where $\sigma^2_g$ is the genetic variance (heterogeneous in FA models) and
-#' $\sigma^2_e$ is the residual variance (extracted from the model).
+#' Calculates the Model-Based Reliability ($R$) for each environment in the trial.
+#' Unlike simple repeatability based on variance components, this function uses
+#' the **Prediction Error Variance (PEV)** from the BLUPs to provide a rigorous
+#' quality metric that accounts for experimental design imbalance and explicit
+#' specific variances ($\Psi$) in Factor Analytic or Reduced Rank models.
+#'
+#' Metric: \deqn{R = 1 - \frac{\text{PEV}_{avg}}{V_g}}
 #'
 #' @param model A fitted \code{asreml} object.
 #' @param fa_object An object of class \code{fa_asreml} produced by \code{fa.asreml()}.
 #'
-#' @return A data.frame summarizing Repeatability, Genetic Variance (Vg), and Residual Variance (Ve) per Site.
+#' @return A data.frame summarizing Repeatability, Genetic Variance (Vg), and Residual Variance (Ve = NA) per Site.
 #'
 #' @details
-#' This function attempts to automatically extract site-specific residual variances.
-#' It supports common ASReml residual specifications:
-#' \itemize{
-#'   \item Homogeneous: \code{rcov = ~ units} or \code{idv(units)}
-#'   \item Heterogeneous: \code{rcov = ~ at(Site):units} or \code{diag(Site):units}
-#'   \item Spatial AR1: \code{rcov = ~ ar1(Row):ar1(Col)} (Uses the nugget/variance component)
-#' }
+#' This function performs a split-prediction strategy to compute the average PEV
+#' for each site efficiently. It automatically cleans the \code{classify} term
+#' (e.g., transforming \code{rr(Site,2):Gen} to \code{Site:Gen}) to ensure that
+#' \code{predict()} captures the Total Genetic Effect (Factor + Specific/Diag).
 #'
 #' @export
 compare_repeatability <- function(model, fa_object) {
@@ -30,90 +29,96 @@ compare_repeatability <- function(model, fa_object) {
     site_stats <- data.frame(Site = rownames(G_mat), Vg = diag(G_mat))
     sites <- as.character(site_stats$Site)
 
-    # 2. EXTRACT RESIDUAL VARIANCES
-    vc <- summary(model)$varcomp
-    vc_names <- rownames(vc)
+    # 2. CALCULATE REPEATABILITY (Rigorous: 1 - PEV/Vg)
+    # -------------------------------------------------------------------------
 
-    # Initialize Ve (Error Variance) vector
-    Ve_vec <- setNames(rep(NA, length(sites)), sites)
-
-    cat("-> Extracting residual variances...\n")
-
-    # Strategy 1: Look for explicit 'units' or 'R' terms linked to sites
-    # e.g. "Site_Loc1!units!R", "at(Site, Loc1):units!R"
-
-    for (site in sites) {
-        # Regex to find this site's error component
-        # Matches:
-        # 1. "at(Site, SiteName):units!R" (Heterogeneous IDV)
-        # 2. "SiteName!units!R" (Old school)
-        # 3. "SiteName:units!R"
-        # 4. "ids(Site, SiteName)!units!R"
-
-        # Escape site name for regex
-        site_esc <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", site)
-
-        # Heuristic Patterns
-        pats <- c(
-            paste0("at\\(.*", site_esc, ".*\\).*(units|R)"), # at(Site, X):units
-            paste0("^", site_esc, "([:!_]).*(units|R)"), # Site:units
-            paste0("units.*", site_esc), # units:at(Site, X)
-            "units!R", # Homogeneous fallback (checked last)
-            "R!variance" # General fallback
-        )
-
-        match_found <- FALSE
-
-        for (pat in pats) {
-            if (pat == "units!R" || pat == "R!variance") {
-                # Only use global fallback if NO specific matches found for ANY site yet?
-                # Or if we are sure it's homogeneous.
-                # Let's check specific site patterns first.
-                next
-            }
-
-            matches <- grep(pat, vc_names, value = TRUE)
-            if (length(matches) > 0) {
-                # Take the row with "variance" or "R" usually
-                # summary(model)$varcomp usually has component in column 1
-                # Use the first match
-                Ve_vec[site] <- vc[matches[1], "component"]
-                match_found <- TRUE
-                break
-            }
-        }
-
-        # Fallback to Global Homogeneous if not found
-        if (!match_found) {
-            global_matches <- grep("(units!R|R!variance|^units$)", vc_names, value = TRUE)
-            if (length(global_matches) > 0) {
-                Ve_vec[site] <- vc[global_matches[1], "component"]
-                # Note: This assigns the same Ve to this site.
-            }
-        }
-    }
 
     # 3. CALCULATE REPEATABILITY
     results_list <- list()
 
-    for (site in sites) {
-        Vg <- site_stats$Vg[site_stats$Site == site]
-        Ve <- Ve_vec[site]
+    # 3. CALCULATE REPEATABILITY (Rigorous: 1 - PEV/Vg)
+    # The user requested using predict() to get PEV, which accounts for the specific variances
+    # and experimental design (unbalance) more accurately than raw Vc.
 
-        if (is.na(Ve)) {
-            warning(sprintf("Could not determine residual variance for site %s. R set to NA.", site))
-            R_val <- NA
-        } else {
-            R_val <- Vg / (Vg + Ve)
-        }
+    cat("-> Calculating Repeatability using PEV (Model-Based Reliability)...\n")
+
+    # Clean Classify Logic (Same as compare_h2)
+    # -------------------------------------------------------------------------
+    # Auto-detect classify if NULL (Need to add classify arg to function signature first?)
+    # We will try to find it in fa_object$meta$classify
+    classify <- fa_object$meta$classify
+    if (is.null(classify)) stop("Could not determine 'classify' string from fa_object metadata.")
+
+    term_parts <- unlist(strsplit(classify, ":"))
+    clean_factors <- sapply(term_parts, function(x) {
+        if (grepl("\\(", x)) sub("^[a-z]+\\(([^,]+).*", "\\1", x) else x
+    })
+    classify_for_predict <- paste(clean_factors, collapse = ":")
+    site_term <- clean_factors[1]
+
+    results_list <- list()
+    pb <- utils::txtProgressBar(min = 0, max = length(sites), style = 3)
+
+    for (i in seq_along(sites)) {
+        site <- sites[i]
+        utils::setTxtProgressBar(pb, i)
+
+        Vg <- site_stats$Vg[site_stats$Site == site]
+        levels_list <- list()
+        levels_list[[site_term]] <- site
+
+        R_val <- NA
+
+        tryCatch(
+            {
+                # Run prediction for this site
+                preds <- asreml::predict.asreml(model,
+                    classify = classify_for_predict,
+                    levels = levels_list,
+                    only = classify_for_predict,
+                    vcov = TRUE,
+                    trace = FALSE
+                )
+
+                # Extract PEV
+                # Find valid indices for this site
+                pvals <- preds$pvals
+                total_vcov <- preds$vcov
+
+                # Identify rows for this site
+                site_col_idx <- which(sapply(pvals, function(c) any(c == site)))
+                if (length(site_col_idx) > 0) {
+                    idx <- which(pvals[[site_col_idx[1]]] == site)
+                } else {
+                    idx <- 1:nrow(pvals)
+                }
+
+                sub_pev <- diag(total_vcov)[idx]
+                mean_pev <- mean(sub_pev, na.rm = TRUE)
+
+                # Calculate Reliability (standard formula)
+                # This serves as our "Rigorous Repeatability"
+                if (Vg > 1e-8) {
+                    R_val <- 1 - (mean_pev / Vg)
+                } else {
+                    R_val <- 0
+                }
+            },
+            error = function(e) {
+                # Fallback to NA if predict fails
+                warning(sprintf("Prediction failed for site %s: %s", site, e$message))
+            }
+        )
 
         results_list[[site]] <- data.frame(
             Site = site,
             Vg = Vg,
-            Ve = Ve,
+            Ve = NA, # PEV based, no single 'Ve'
             Repeatability = R_val
         )
     }
+
+    close(pb)
 
     final_df <- do.call(rbind, results_list)
     rownames(final_df) <- NULL

@@ -12,7 +12,6 @@ Imports:
     stringr,
     tibble,
     reshape2,
-
     MASS,
     Rcpp
 LinkingTo: 

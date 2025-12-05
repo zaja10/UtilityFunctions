@@ -77,9 +77,28 @@ compare_h2 <- function(model, fa_object, grm = NULL,
     # Parse site column name from classify string (e.g. "Site:Genotype" -> "Site")
     # Assuming the first term is the site term for splitting
     term_parts <- unlist(strsplit(classify, ":"))
-    site_term <- term_parts[1] # Heuristic: First term is usually Site/Env
 
-    cat(sprintf("-> Running split predictions for '%s' across %d sites...\n", classify, length(sites)))
+    # CLEAN CLASSIFY FOR PREDICT:
+    # Transform "fa(Site,2):Gen" -> "Site:Gen"
+    # Transform "rr(Site,2):Gen" -> "Site:Gen"
+    # This ensures predict() sums BOTH the rr() term AND the diag() term for RR models.
+    clean_factors <- sapply(term_parts, function(x) {
+        # Remove function calls parentheses e.g. fa(Site,2) -> Site
+        # Regex: remove everything from ( to end, and descriptors?
+        # ASReml syntax is tricky. "fa(Site, k)" -> we want "Site".
+        # "gn(Gen)" -> "Gen"
+        # Simple heuristic: extract the variable name inside the first parens if present.
+        if (grepl("\\(", x)) {
+            sub("^[a-z]+\\(([^,]+).*", "\\1", x) # Extract first arg of function
+        } else {
+            x
+        }
+    })
+    classify_for_predict <- paste(clean_factors, collapse = ":")
+
+    site_term <- clean_factors[1] # Heuristic: First term is usually Site/Env
+
+    cat(sprintf("-> Running split predictions for '%s' (Term: %s) across %d sites...\n", classify_for_predict, classify, length(sites)))
 
     # Progress Bar
     pb <- utils::txtProgressBar(min = 0, max = length(sites), style = 3)
@@ -102,9 +121,9 @@ compare_h2 <- function(model, fa_object, grm = NULL,
         tryCatch(
             {
                 preds <- asreml::predict.asreml(model,
-                    classify = classify,
+                    classify = classify_for_predict,
                     levels = levels_list,
-                    only = classify, # Minimize output size
+                    only = classify_for_predict, # Minimize output size
                     sed = "Cullis" %in% methods, # Needed for Cullis
                     vcov = any(c("Oakey", "Standard") %in% methods), # Needed for Oakey/Standard
                     trace = FALSE
