@@ -22,7 +22,8 @@ RoxygenNote: 7.3.3
 Suggests: 
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    agridat
 VignetteBuilder: knitr
 URL: https://github.com/zaja10/GenomicFlow
 BugReports: https://github.com/zaja10/GenomicFlow/issues

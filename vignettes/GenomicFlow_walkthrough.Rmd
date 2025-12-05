@@ -1,0 +1,181 @@
+---
+title: "GenomicFlow: Complete Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{GenomicFlow: Complete Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 6
+)
+```
+
+# Introduction
+
+**GenomicFlow** provides a robust suite of tools for analyzing Multi-Environment Trial (MET) data. It implements the "Design Tableau" for structural validation, a wrapper for ASReml-R Factor Analytic models, and the Smith & Cullis (2018) selection tools (FAST).
+
+This vignette demonstrates:
+1.  **Design Tableau**: Validating trial structure.
+2.  **Smart Solver**: Fitting FA models with automatic rotation.
+3.  **FAST Diagnostics**: Selection indices and visualization.
+4.  **Population Development**: Predicting cross utility.
+
+*Note: This vignette requires the `asreml` package and a valid license.*
+
+```{r setup}
+library(GenomicFlow)
+library(tidyverse)
+# library(asreml) # Required for model fitting
+library(agridat) # For the example dataset
+```
+
+# Part 1: Standard MET Analysis
+
+We will use the `dasilva.maize` dataset from `agridat`.
+
+```{r data}
+data("dasilva.maize")
+df <- dasilva.maize
+head(df)
+```
+
+## 1. Design Tableau (Structural Validation)
+
+Before fitting models, we validate the data structure using `build_design_tableau`. This checks for issues like aliasing between Reps and Environments.
+
+```{r tableau}
+# Define the Treatment and Plot Structure
+# Treatment: Genotype
+# Plot: Env/Rep (Rep nested within Env)
+tableau <- build_design_tableau(
+  data = df,
+  treatment_formula = ~gen,
+  plot_formula = ~ env / rep
+)
+
+print(tableau)
+```
+
+## 2. Fit the Smart Model
+
+We use `fit_met_model` to fit a Factor Analytic model (FA2) to the `tableau`. This function wraps `asreml()` and performs post-hoc rotation (Varimax or PC).
+
+```{r, eval = FALSE}
+# This block requires ASReml
+model_fa <- fit_met_model(
+  object = tableau,
+  k = 2,
+  genotype = "gen",
+  site = "env",
+  rotation = "varimax",
+  residual = ~ dsum(~ id(units) | env) # Heterogeneous residuals
+)
+
+# If you already have a fitted asreml object, you can extract parameters:
+# model_fa <- fit_met_model(existing_asreml_obj, k=2, rotation="varimax")
+```
+
+*For the purpose of this vignette, we will simulate the structure of a result object if `asreml` is not present.*
+
+```{r sim_results, include=FALSE}
+# Mock object for rendering the vignette without ASReml license
+# (In real usage, this comes from fit_met_model)
+sites <- levels(df$env)
+gens <- levels(df$gen)
+
+# Simulate Factor Loadings (Varimax-like structure)
+lam <- matrix(rnorm(length(sites) * 2, 0.5, 0.2), ncol = 2)
+rownames(lam) <- sites
+lam[, 2] <- runif(length(sites), -0.5, 0.5) # Factor 2 interaction
+
+# Simulate Scores
+sco <- matrix(rnorm(length(gens) * 2), ncol = 2)
+rownames(sco) <- gens
+
+# FAST Indices
+op <- sco[, 1] * mean(lam[, 1])
+rmsd <- abs(sco[, 2] * 0.5) # Toy RMSD
+
+res_obj <- list(
+  loadings = list(rotated = lam),
+  scores = list(rotated = sco),
+  matrices = list(Cor = cor(t(lam %*% t(lam)))),
+  fast = data.frame(Genotype = gens, OP = op, RMSD = rmsd),
+  meta = list(k = 2, type = "Simulated"),
+  var_comp = list(vaf = data.frame(Site = sites, VAF = runif(length(sites), 80, 99)))
+)
+class(res_obj) <- "fa_asreml"
+```
+
+```{r assign_sim, echo=FALSE}
+model_fa <- res_obj
+```
+
+## 3. Visualization & Selection (FAST)
+
+### A. The Selection Plot (OP vs RMSD)
+Select varieties in the top-left (High OP, Low RMSD).
+
+```{r viz_fast}
+plot(model_fa, type = "fast", n_label = 5)
+```
+
+### B. Genetic Correlations (Heatmap)
+Assess the similarity between environments.
+
+```{r viz_heat}
+plot(model_fa, type = "heatmap")
+```
+
+### C. Latent Regression (GxE Drivers)
+Visualize how varieties respond to the latent environmental factors.
+
+```{r viz_reg}
+plot(model_fa, type = "latent_reg", n_label = 3)
+```
+
+# Part 2: Population Development (Prediction)
+
+GenomicFlow can predict the `Usefulness Criterion` (UC) of crosses using gametic variance derived from a genomic map.
+
+## 1. Simulate Genomic Data
+We generate synthetic markers and a map.
+
+```{r gen_sim}
+# Create fake population
+n_mk <- 100
+map <- sort(runif(n_mk, 0, 10)) # 10 Morgan map
+names(map) <- paste0("M", 1:n_mk)
+
+# Marker Matrix (0, 2)
+M <- matrix(sample(c(0, 2), 20 * n_mk, replace = TRUE), nrow = 20, ncol = n_mk)
+rownames(M) <- paste0("Parent_", 1:20)
+colnames(M) <- names(map)
+
+# Marker Effects
+eff <- rnorm(n_mk)
+names(eff) <- names(map)
+```
+
+## 2. Predict Cross Utility
+We evaluate all pairwise crosses between 5 parents.
+
+```{r predict}
+parents <- rownames(M)[1:5]
+cross_predictions <- predict_cross_utility(
+  parents = parents,
+  markers = M,
+  effects = eff,
+  map = map
+)
+
+head(cross_predictions)
+```
+
+The `UC` column helps prioritize which crosses to make to maximize genetic gain in the next generation.
