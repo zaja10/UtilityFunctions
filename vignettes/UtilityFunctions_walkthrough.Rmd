@@ -1,0 +1,180 @@
+---
+title: "UtilityFunctions: Complete Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{UtilityFunctions: Complete Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 6
+)
+```
+
+# Introduction
+
+**UtilityFunctions** provides a robust suite of tools for analyzing Multi-Environment Trial (MET) data. It implements the "Design Tableau" for structural validation, a wrapper for ASReml-R Factor Analytic models, and the Smith & Cullis (2018) selection tools (FAST).
+
+This vignette demonstrates:
+1.  **Design Tableau**: Validating trial structure.
+2.  **Smart Solver**: Fitting FA models with automatic rotation.
+3.  **FAST Diagnostics**: Selection indices and visualization.
+4.  **Population Development**: Predicting cross utility.
+
+*Note: This vignette requires the `asreml` package and a valid license.*
+
+```{r setup}
+library(UtilityFunctions)
+library(tidyverse)
+# library(asreml) # Required for model fitting
+library(agridat) # For the example dataset
+```
+
+# Part 1: Standard MET Analysis
+
+We will use the `dasilva.maize` dataset from `agridat`.
+
+```{r data}
+data("dasilva.maize")
+df <- dasilva.maize
+head(df)
+```
+
+## 1. Design Diagnostics
+Before analysis, we validate the data structure using `diagnose_design`. This checks for issues like aliasing between Reps and Sites.
+
+```{r tableau}
+# Check structure
+diag_report <- diagnose_design(
+  data = df,
+  genotype = "gen",
+  trial = "env",
+  rep = "rep"
+)
+
+print(diag_report)
+```
+
+## 2. Fit Model (ASReml)
+Fit a standard Factor Analytic model using ASReml-R. 
+
+```{r, eval = FALSE}
+# Standard ASReml Call
+# fa(env, 2):gen fits a Factor Analytic model of order 2
+model_fit <- asreml(
+  fixed = yield ~ env,
+  random = ~ fa(env, 2):gen + rep:env,
+  residual = ~ dsum(~ id(units) | env),
+  data = df
+)
+```
+
+## 3. Post-Processing (FAST)
+Use `fa.asreml` to extract parameters, perform rotation, and calculate selection indices.
+
+```{r, eval = FALSE}
+# Extract & Rotate (Varimax)
+# 'classify' must match the FA term in the model
+model_fa <- fa.asreml(model_fit, classify = "fa(env, 2):gen", rotation = "varimax")
+```
+
+```{r sim_results, include=FALSE}
+# Mock object for rendering the vignette without ASReml license
+sites <- levels(df$env)
+gens <- levels(df$gen)
+
+# Simulate Factor Loadings (Varimax-like)
+lam <- matrix(rnorm(length(sites) * 2, 0.5, 0.2), ncol = 2)
+rownames(lam) <- sites
+lam[, 2] <- runif(length(sites), -0.5, 0.5)
+
+# Simulate Scores
+sco <- matrix(rnorm(length(gens) * 2), ncol = 2)
+rownames(sco) <- gens
+
+# FAST Indices
+op <- sco[, 1] * mean(lam[, 1])
+rmsd <- abs(sco[, 2] * 0.5)
+
+res_obj <- list(
+  loadings = list(rotated = lam),
+  scores = list(rotated = sco),
+  matrices = list(Cor = cor(t(lam %*% t(lam)))),
+  fast = data.frame(Genotype = gens, OP = op, RMSD = rmsd),
+  meta = list(k = 2, type = "Simulated"),
+  var_comp = list(vaf = data.frame(Site = sites, VAF = runif(length(sites), 80, 99)))
+)
+class(res_obj) <- "fa_asreml"
+```
+
+```{r assign_sim, echo=FALSE}
+model_fa <- res_obj
+```
+
+## 3. Visualization & Selection (FAST)
+
+### A. The Selection Plot (OP vs RMSD)
+Select varieties in the top-left (High OP, Low RMSD).
+
+```{r viz_fast}
+plot(model_fa, type = "fast", n_label = 5)
+```
+
+### B. Genetic Correlations (Heatmap)
+Assess the similarity between environments.
+
+```{r viz_heat}
+plot(model_fa, type = "heatmap")
+```
+
+### C. Latent Regression (GxE Drivers)
+Visualize how varieties respond to the latent environmental factors.
+
+```{r viz_reg}
+plot(model_fa, type = "latent_reg", n_label = 3)
+```
+
+# Part 2: Population Development (Prediction)
+
+GenomicFlow can predict the `Usefulness Criterion` (UC) of crosses using gametic variance derived from a genomic map.
+
+## 1. Simulate Genomic Data
+We generate synthetic markers and a map.
+
+```{r gen_sim}
+# Create fake population
+n_mk <- 100
+map <- sort(runif(n_mk, 0, 10)) # 10 Morgan map
+names(map) <- paste0("M", 1:n_mk)
+
+# Marker Matrix (0, 2)
+M <- matrix(sample(c(0, 2), 20 * n_mk, replace = TRUE), nrow = 20, ncol = n_mk)
+rownames(M) <- paste0("Parent_", 1:20)
+colnames(M) <- names(map)
+
+# Marker Effects
+eff <- rnorm(n_mk)
+names(eff) <- names(map)
+```
+
+## 2. Predict Cross Utility
+We evaluate all pairwise crosses between 5 parents.
+
+```{r predict}
+parents <- rownames(M)[1:5]
+cross_predictions <- predict_cross_utility(
+  parents = parents,
+  markers = M,
+  effects = eff,
+  map = map
+)
+
+head(cross_predictions)
+```
+
+The `UC` column helps prioritize which crosses to make to maximize genetic gain in the next generation.

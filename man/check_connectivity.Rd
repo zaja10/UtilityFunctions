@@ -19,7 +19,8 @@ to be considered "connected" (default 10). Pairs below this are flagged.}
 \value{
 A list containing:
 \describe{
-  \item{matrix}{The Site x Site connectivity matrix (counts of shared lines).}
+  \item{matrix_count}{The Site x Site connectivity matrix (counts of shared lines).}
+  \item{matrix_pct}{The connectivity matrix as percentages (Jaccard Index).}
   \item{disconnects}{A dataframe listing specific site pairs that fell below the threshold.}
 }
 }
