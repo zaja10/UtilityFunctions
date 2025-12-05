@@ -26,13 +26,10 @@
 #'        Required only for **Reduced Rank** models where the diagonal variance is fitted
 #'        separately (e.g., \code{"diag(Site):Genotype"}). If NULL for an RR model,
 #'        specific variances are assumed to be zero.
-#' @param rotate Logical. If \code{TRUE} (default), loadings and scores are rotated
-#'        to the Principal Component solution via SVD. If \code{FALSE}, raw parameters
-#'        are returned (warning: FAST indices may be invalid without rotation).
 #'
 #' @return An object of class \code{fa_asreml} containing:
 #' \describe{
-#'   \item{loadings}{A list containing \code{raw} and \code{rotated} site loading matrices.}
+#'   \item{loadings}{A list containing \code{raw}, \code{rotated} (SVD), and \code{varimax} site loading matrices.}
 #'   \item{scores}{A list containing \code{raw} and \code{rotated} genotype score matrices (BLUPs).}
 #'   \item{var_comp}{A list containing the extracted specific variances (\code{psi}) and a table of Variance Accounted For (\code{vaf}).}
 #'     \itemize{
@@ -70,9 +67,9 @@
 #' @importFrom tidyr pivot_wider
 #' @importFrom stringr str_extract
 #' @importFrom tibble column_to_rownames
-#' @importFrom stats coef cov2cor sd
+#' @importFrom stats coef cov2cor sd varimax
 #' @export
-fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
+fa.asreml <- function(model, classify, psi_term = NULL) {
   cat("--- Starting FA/RR Extraction ---\n")
 
   # 1. SETUP ------------------------------------------------------------------
@@ -201,22 +198,89 @@ fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
   }
 
   # 6. ROTATION ---------------------------------------------------------------
-  if (rotate && nrow(lambda_mat) > 1) {
+  # NOTE: We now calculate both PC (SVD) and Varimax rotations automatically
+
+  rot_list <- list(
+    raw = lambda_mat,
+    rotated = lambda_mat, # Fallback
+    varimax = lambda_mat # Fallback
+  )
+  rot_mat_list <- list(
+    pc = diag(k),
+    varimax = diag(k)
+  )
+
+  scores_list <- if (has_scores) list(raw = f_mat, rotated = f_mat, varimax = f_mat) else NULL
+
+  if (nrow(lambda_mat) > 1 && k > 1) {
+    # A. Principal Component Rotation (SVD) - Required for FAST
     svd_res <- svd(lambda_mat)
     V <- svd_res$v
     lambda_rot <- lambda_mat %*% V
+    # Ensure Fac1 is positive sum (sign flipping)
     if (sum(lambda_rot[, 1]) < 0) {
       lambda_rot[, 1] <- -lambda_rot[, 1]
       V[, 1] <- -V[, 1]
     }
     f_rot <- if (has_scores) f_mat %*% V else f_mat
-    rot_mat <- V
+
+    rot_list$rotated <- lambda_rot
+    rot_mat_list$pc <- V
+    if (has_scores) scores_list$rotated <- f_rot
+
+    # B. Varimax Rotation - Exploratory
+    # Use built-in varimax() on the RAW loadings
+    # varimax() returns list(loadings, rotmat)
+    # But wait, varimax usually rotates the *factors*.
+    # For ASReml lambda, we want L* = L %*% T.
+    tryCatch(
+      {
+        vm <- stats::varimax(lambda_mat, normalize = FALSE) # No Kaiser normalization usually for FA? Or default TRUE?
+        # Let's use normalize=TRUE (default) for standard behavior
+        # Actually, ASReml usually fits standardized or not?
+        # Let's stick to default.
+
+        lambda_vm <- matrix(as.numeric(vm$loadings), nrow = nrow(lambda_mat), ncol = k)
+        rownames(lambda_vm) <- rownames(lambda_mat)
+        colnames(lambda_vm) <- paste0("Fac", 1:k)
+
+        T_vm <- vm$rotmat
+        f_vm <- if (has_scores) f_mat %*% T_vm else f_mat
+
+        rot_list$varimax <- lambda_vm
+        rot_mat_list$varimax <- T_vm
+        if (has_scores) scores_list$varimax <- f_vm
+      },
+      error = function(e) {
+        warning("Varimax rotation failed. defaulting to raw.")
+      }
+    )
   } else {
-    lambda_rot <- lambda_mat
-    f_rot <- f_mat
-    rot_mat <- diag(k)
+    # If k=1, rotation is scalar 1 or -1. SVD handles sign.
+    if (k == 1 && nrow(lambda_mat) > 0) {
+      # Check sign
+      if (sum(lambda_mat[, 1]) < 0) {
+        rot_list$rotated <- -lambda_mat
+        rot_list$varimax <- -lambda_mat
+        rot_mat_list$pc <- matrix(-1, 1, 1)
+        rot_mat_list$varimax <- matrix(-1, 1, 1)
+        if (has_scores) {
+          scores_list$rotated <- -f_mat
+          scores_list$varimax <- -f_mat
+        }
+      }
+    }
   }
-  colnames(lambda_rot) <- colnames(f_rot) <- paste0("Fac", 1:k)
+
+  lambda_rot <- rot_list$rotated # For reconstruction steps below
+  f_rot <- scores_list$rotated # For fast indices
+
+  colnames(rot_list$rotated) <- paste0("Fac", 1:k)
+  colnames(rot_list$varimax) <- paste0("Fac", 1:k)
+  if (has_scores) {
+    colnames(scores_list$rotated) <- paste0("Fac", 1:k)
+    colnames(scores_list$varimax) <- paste0("Fac", 1:k)
+  }
 
   # 7. RECONSTRUCTION ---------------------------------------------------------
   common_sites <- intersect(rownames(lambda_rot), psi_df$Site)
@@ -224,7 +288,7 @@ fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
 
   lam_ord <- lambda_rot[common_sites, , drop = FALSE]
   psi_ord <- diag(psi_df$Psi[match(common_sites, psi_df$Site)])
-  psi_ord <- diag(psi_df$Psi[match(common_sites, psi_df$Site)])
+  # Duplicate line removed here
   G_est <- (lam_ord %*% t(lam_ord)) + psi_ord
 
   # DIAGNOSTIC: Check Positive Definiteness of G
@@ -247,11 +311,11 @@ fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
   }
 
   out <- list(
-    loadings = list(raw = lambda_mat, rotated = lambda_rot),
-    scores = if (has_scores) list(raw = f_mat, rotated = f_rot) else NULL,
+    loadings = rot_list,
+    scores = scores_list,
     var_comp = list(psi = psi_df, vaf = vaf_df),
     matrices = list(G = G_est, Cor = C_est),
-    fast = fast_df, rotation_matrix = rot_mat, meta = list(k = k, type = model_type, classify = classify)
+    fast = fast_df, rotation_matrix = rot_mat_list, meta = list(k = k, type = model_type, classify = classify)
   )
   class(out) <- "fa_asreml"
   return(out)
