@@ -1,7 +1,13 @@
-#' Population Genetics & Cross Prediction
+#' Population Genetics & Cross Prediction Tools
 #'
 #' @description
-#' Tools for predicting the value of crosses based on genomic data.
+#' A suite of tools for breeding program optimization. Includes functions to:
+#' \itemize{
+#'   \item Predict **Usefulness Criterion (UC)** of biparental crosses.
+#'   \item Calculate gametic variance using recombination maps.
+#' }
+#' This allows breeders to select parental combinations that maximize the probability
+#' of generating superior progeny.
 
 #' Predict Cross Utility (Usefulness Criterion)
 #'

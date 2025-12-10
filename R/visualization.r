@@ -99,8 +99,6 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
     .plot_dopt(get_d_optimality(x))
   } else if (type == "diff") {
     .plot_diff(get_i_classes(x, if (is.null(factor)) 2 else factor), n_label, highlight)
-  } else if (type == "h2") {
-    .plot_h2(x)
   } # Dispatch to h2 plotter
   else {
     stop("Unknown type.")

@@ -1,5 +1,25 @@
 
 #' Generate Synthetic Genomic Relationship Matrix (GRM)
+#'
+#' @description
+#' Creates a Genomic Relationship Matrix (GRM) using the VanRaden (2008) Method 1.
+#' \deqn{G = \frac{ZZ'}{2 \sum p_i (1-p_i)}}
+#' where \eqn{Z} is the centered genotype matrix ($M - 2P$).
+#'
+#' @param n_gen Integer. Number of genotypes to simulate.
+#' @param n_markers Integer. Number of SNP markers.
+#' @param seed Integer. Seed for reproducibility.
+#'
+#' @return A list containing:
+#' \describe{
+#'   \item{grm}{The calculated GRM (n_gen x n_gen).}
+#'   \item{markers}{The raw allele dosage matrix (0, 1, 2).}
+#' }
+#' 
+#' @references 
+#' VanRaden, P. M. (2008). Efficient methods to compute genomic predictions. 
+#' \emph{Journal of dairy science}, 91(11), 4414-4423.
+#' 
 #' @export
 generate_grm <- function(n_gen = 200, n_markers = 1000, seed = 123) {
   set.seed(seed)
@@ -79,16 +99,21 @@ generate_met_data <- function(n_sites = 10, n_gen = 100, n_reps = 2, sparsity = 
 
 #' Generate Genomic MET Data
 #'
-#' Simulates a MET where variety performance is determined by a Genomic Relationship
-#' Matrix (GRM). Designed for testing \code{vm()} terms in ASReml.
+#' @description
+#' Simulates a Multi-Environment Trial (MET) where the genetic signal is strictly
+#' controlled by a user-provided Genomic Relationship Matrix (GRM). This is ideal
+#' for validating `vm()` (variance model) terms in ASReml-R.
 #'
-#' @param n_sites Integer. Number of environments.
-#' @param grm Matrix. A relationship matrix (e.g., from \code{generate_grm}).
-#' @param n_reps Integer. Replicates per site.
-#' @param h2 Numeric. Heritability (0-1). Controls the signal-to-noise ratio.
+#' @param n_sites Integer. Number of environments to simulate.
+#' @param grm Matrix. The relationship matrix (e.g. from \code{generate_grm()}).
+#'        Genotypes in the GRM define the population.
+#' @param n_reps Integer. Number of replicates per site.
+#' @param h2 Numeric (0 to 1). The target Heritability (Broad Sense) for the trial.
+#'        Lower h2 implies higher residual noise.
 #'
-#' @return A dataframe containing spatial coordinates and yield, suitable for
-#' genomic GxE analysis.
+#' @return A dataframe with columns:
+#' \code{Site, Genotype, Rep, Row, Column, Yield}.
+#'
 #' @export
 generate_genomic_met <- function(n_sites = 10, grm, n_reps = 2, h2 = 0.5) {
   n_gen <- nrow(grm); gens <- rownames(grm)
