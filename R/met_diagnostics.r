@@ -16,10 +16,38 @@ NULL
 #' @param data A data.frame containing the trial data.
 #' @param row String. Column name for Row positions (Default: "Row").
 #' @param col String. Column name for Column positions (Default: "Column").
+#' @param group String. Column name for Trial/Environment to pad independently.
+#'        If NULL (default), treats input as a single trial.
 #'
 #' @return A data.frame with the original data plus rows for missing physical positions.
 #' @export
-pad_trial_layout <- function(data, row = "Row", col = "Column") {
+pad_trial_layout <- function(data, row = "Row", col = "Column", group = NULL) {
+    # Recursive handling for groups
+    if (!is.null(group)) {
+        if (!group %in% names(data)) stop(paste("Group column", group, "not found."))
+
+        # Split, apply, combine
+        # Use split instead of dplyr group_by to stick to base R
+        out_list <- split(data, data[[group]])
+
+        padded_list <- lapply(names(out_list), function(grp_name) {
+            sub_df <- out_list[[grp_name]]
+            padded <- pad_trial_layout(sub_df, row = row, col = col, group = NULL)
+
+            # Fill the group column for the new NA rows
+            # The split name (grp_name) is a character, but the original column might be numeric/factor.
+            # Get the actual value from the sub_df to preserve type.
+            val <- unique(sub_df[[group]])[1]
+            padded[[group]] <- val
+            return(padded)
+        })
+
+        # Bind rows
+        out_df <- do.call(rbind, padded_list)
+        rownames(out_df) <- NULL # Clean rownames
+        return(out_df)
+    }
+
     if (!all(c(row, col) %in% names(data))) {
         warning("Row or Column columns not found. Returning original data.")
         return(data)
@@ -155,47 +183,53 @@ get_connectivity <- function(data, x_fac = "Year", y_fac = NULL, trace = "Genoty
 #' @param y String. Factor for Y-axis (Default `NULL` uses x for symmetric).
 #' @param trace String. Variable establishing connection (e.g. "Genotype").
 #' @param method String. "count", "jaccard", or "prop_min".
+#' @param order_by String. Column name to use for sorting the axes (e.g. "Year").
+#'        If NULL, defaults to "Year" if present. Set to FALSE to disable sorting.
 #' @param ... Additional arguments passed to `image()`.
 #'
 #' @export
-plot_connectivity <- function(data, x = "Year", y = NULL, trace = "Genotype", method = "count", ...) {
+plot_connectivity <- function(data, x = "Year", y = NULL, trace = "Genotype", method = "count", order_by = NULL, ...) {
     mat <- get_connectivity(data, x, y, trace, method)
 
-    # Sorting Logic: Try to sort axes by Year if they aren't "Year" itself
-    if ("Year" %in% names(data)) {
+    # Determine sorting column
+    sort_col <- NULL
+    if (is.null(order_by)) {
+        if ("Year" %in% names(data)) sort_col <- "Year"
+    } else if (!isFALSE(order_by)) {
+        if (order_by %in% names(data)) {
+            sort_col <- order_by
+        } else {
+            warning(paste("Ordering column", order_by, "not found. Skipping sort."))
+        }
+    }
+
+    if (!is.null(sort_col)) {
         # Helper to get order
         get_order <- function(fac_name, current_levels) {
-            if (fac_name == "Year") {
+            if (fac_name == sort_col) {
                 return(current_levels)
             } # Already sorted usually, or numeric
 
-            # Find mapping of Factor -> Year (use median or min year)
-            # We need to make sure we only use the data that went into the matrix?
-            # Actually, just using global data is fine for finding the year.
-            meta <- unique(data[, c(fac_name, "Year")])
+            # Find mapping of Factor -> SortCol
+            meta <- unique(data[, c(fac_name, sort_col)])
             meta <- meta[meta[[fac_name]] %in% current_levels, ]
 
-            # Aggregate if multiple years per factor level (unlikely for Trial, possible for others)
-            # Use min year to sort
-            ord_df <- aggregate(as.formula(paste("Year ~", fac_name)), data = meta, min)
-            ordering <- ord_df[order(ord_df$Year, ord_df[[fac_name]]), fac_name]
+            # Aggregate if multiple sort-values per factor level (use min)
+            ord_df <- aggregate(as.formula(paste(sort_col, "~", fac_name)), data = meta, min)
+
+            # Return levels sorted by the sort_col
+            ordering <- ord_df[order(ord_df[[sort_col]], ord_df[[fac_name]]), fac_name]
             return(as.character(ordering))
         }
 
-        # Sort Rows (X axis in get_connectivity, usually Y axis in image)
-        # Note: get_connectivity returns Rows=X_fac, Cols=Y_fac if symmetric?
-        # Wait, check get_connectivity:
-        # M1 Rows=Trace, Cols=X. M2 Rows=Trace, Cols=Y.
-        # crossprod(M1, M2) -> Rows=X, Cols=Y.
-
-        # So Rows of Mat correspond to 'x' arg.
+        # Sort Rows (X axis in get_connectivity)
         row_ord <- get_order(x, rownames(mat))
 
         # Sort Cols (Y axis in get_connectivity)
         y_name <- if (is.null(y)) x else y
         col_ord <- get_order(y_name, colnames(mat))
 
-        # Intersect to be safe (in case get_order missed something, rare)
+        # Intersect to be safe (in case get_order missed something)
         row_ord <- intersect(row_ord, rownames(mat))
         col_ord <- intersect(col_ord, colnames(mat))
 
@@ -234,38 +268,97 @@ plot_connectivity <- function(data, x = "Year", y = NULL, trace = "Genotype", me
 
 #' Plot MET Trends
 #'
-#' Visualizes performance trends over time or across environments using boxplots.
+#' Visualizes performance trends over time using a combined Boxplot (distribution)
+#' and Linear Regression (rate of change) approach.
 #'
 #' @param data A data.frame.
-#' @param x String. Categorical variable for X-axis (e.g. "Year").
+#' @param x String. Categorical variable for X-axis (e.g. "Year"). Must be convertible to numeric for trend analysis.
 #' @param y String. Response variable (e.g. "Yield").
-#' @param main String. Plot title.
-#' @param ... Additional arguments passed to `boxplot`.
+#' @param main String. Plot title prefix.
+#' @param ... Additional arguments passed to `plot` or `boxplot`.
 #'
 #' @export
 plot_met_trend <- function(data, x = "Year", y = "Yield", main = "Yield Trend", ...) {
     if (!all(c(x, y) %in% names(data))) stop("Variables not found in data.")
 
-    form <- as.formula(paste(y, "~", x))
+    # Prepare Data Types
+    raw_x <- data[[x]]
 
+    # create numeric version for regression
+    if (is.numeric(raw_x)) {
+        x_num <- raw_x
+    } else {
+        # Try converting character/factor to numeric (assuming "2020", "2021" etc.)
+        x_num <- suppressWarnings(as.numeric(as.character(raw_x)))
+        if (all(is.na(x_num))) stop(paste("Column", x, "must be numeric (e.g. Year) for trend analysis."))
+    }
+
+    # create factor version for boxplot grouping
+    x_fac <- as.factor(raw_x)
+
+    # --- Regression Analysis ---
+    # Fit model: y ~ x_numeric
+    # Use a temp dataframe to avoid environment issues with lm formulas
+    tmp_df <- data.frame(Y = data[[y]], X = x_num)
+    model <- lm(Y ~ X, data = tmp_df)
+
+    slope <- coef(model)["X"]
+    r_sq <- summary(model)$r.squared
+
+    # --- Visualisation ---
     old_par <- par(no.readonly = TRUE)
     on.exit(par(old_par))
 
-    par(mar = c(5, 5, 4, 2))
-    boxplot(form,
-        data = data,
-        col = "lightblue",
-        border = "navy",
-        main = main,
+    # 2 Rows (1 Column)
+    layout(matrix(1:2, nrow = 2))
+
+    # Plot 1: Boxplot (Distribution)
+    par(mar = c(3, 5, 3, 2))
+    boxplot(data[[y]] ~ x_fac,
+        col = "lightgreen",
+        border = "darkgreen",
+        main = paste(main, "(Distribution)"),
         ylab = y,
-        xlab = x,
-        las = 2, # Vertical labels if many years
+        las = 1,
         ...
     )
 
-    # Add trend line of means
-    means <- tapply(data[[y]], data[[x]], mean, na.rm = TRUE)
-    lines(seq_along(means), means, col = "red", lwd = 2, type = "o", pch = 19)
+    # Plot 2: Line Plot (Means + Trend)
+    par(mar = c(5, 5, 2, 2))
+
+    # Calculate Means using the numeric x values to correctly space them on x-axis
+    # Note: tapply sorts by the factor levels. We need to match means to specific numeric years.
+    means <- tapply(tmp_df$Y, tmp_df$X, mean, na.rm = TRUE)
+    years_plot <- as.numeric(names(means))
+
+    plot(years_plot, means,
+        type = "b",
+        pch = 19, lwd = 2, col = "blue",
+        main = paste(main, "(Rate of Change)"),
+        xlab = x, ylab = paste("Mean", y),
+        xaxt = "n", # Custom axis
+        las = 1
+    )
+
+    # Smart Axis
+    axis(1, at = years_plot, labels = years_plot)
+    grid()
+
+    # Add Regression Line
+    abline(model, col = "red", lwd = 2)
+
+    # Stats Legend
+    legend_text <- c(
+        paste("Rate:", round(slope, 4), "unit/yr"),
+        paste("R2:", round(r_sq, 3))
+    )
+
+    legend("topleft",
+        legend = legend_text, bty = "n", cex = 0.9,
+        text.col = "black"
+    )
+
+    layout(1)
 }
 
 #' Flexible Trial Map

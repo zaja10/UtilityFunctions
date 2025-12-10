@@ -4,7 +4,7 @@
 \alias{pad_trial_layout}
 \title{Pad Trial Layout for Spatial Analysis}
 \usage{
-pad_trial_layout(data, row = "Row", col = "Column")
+pad_trial_layout(data, row = "Row", col = "Column", group = NULL)
 }
 \arguments{
 \item{data}{A data.frame containing the trial data.}
@@ -12,6 +12,9 @@ pad_trial_layout(data, row = "Row", col = "Column")
 \item{row}{String. Column name for Row positions (Default: "Row").}
 
 \item{col}{String. Column name for Column positions (Default: "Column").}
+
+\item{group}{String. Column name for Trial/Environment to pad independently.
+If NULL (default), treats input as a single trial.}
 }
 \value{
 A data.frame with the original data plus rows for missing physical positions.

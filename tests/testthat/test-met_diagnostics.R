@@ -15,6 +15,33 @@ test_that("pad_trial_layout fills missing coordinates", {
     expect_equal(padded$Yield[padded$Row == 1 & padded$Column == 2], 20)
 })
 
+test_that("pad_trial_layout handles MET groups", {
+    df <- data.frame(
+        Trial = c("T1", "T1", "T2"),
+        Row = c(1, 2, 1),
+        Column = c(1, 1, 1), # T1 is 2x1 grid, T2 is 1x1
+        Yield = c(10, 20, 30)
+    )
+    # Modify T1 to have missing spot: Row 1,2 exist. Suppose max is 3?
+    # Let's make T1 miss (2,1).
+    df <- data.frame(
+        Trial = c("T1", "T1", "T2"),
+        Row = c(1, 3, 1),
+        Column = c(1, 1, 1),
+        Yield = c(10, 20, 30)
+    ) # T1 ranges 1-3. Missing 2.
+
+    padded <- pad_trial_layout(df, group = "Trial")
+
+    # T1 should have 3 rows now (1, 2(NA), 3). T2 should have 1 row. Total 4.
+    expect_equal(nrow(padded), 4)
+
+    # Check T1 missing row
+    t1_pad <- padded[padded$Trial == "T1" & padded$Row == 2, ]
+    expect_equal(nrow(t1_pad), 1)
+    expect_true(is.na(t1_pad$Yield))
+})
+
 test_that("get_connectivity returns correct counts", {
     # 2 Years, 3 Genotypes
     # Y1: G1, G2

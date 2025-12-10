@@ -10,6 +10,7 @@ plot_connectivity(
   y = NULL,
   trace = "Genotype",
   method = "count",
+  order_by = NULL,
   ...
 )
 }
@@ -23,6 +24,9 @@ plot_connectivity(
 \item{trace}{String. Variable establishing connection (e.g. "Genotype").}
 
 \item{method}{String. "count", "jaccard", or "prop_min".}
+
+\item{order_by}{String. Column name to use for sorting the axes (e.g. "Year").
+If NULL, defaults to "Year" if present. Set to FALSE to disable sorting.}
 
 \item{...}{Additional arguments passed to `image()`.}
 }

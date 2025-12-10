@@ -9,14 +9,15 @@ plot_met_trend(data, x = "Year", y = "Yield", main = "Yield Trend", ...)
 \arguments{
 \item{data}{A data.frame.}
 
-\item{x}{String. Categorical variable for X-axis (e.g. "Year").}
+\item{x}{String. Categorical variable for X-axis (e.g. "Year"). Must be convertible to numeric for trend analysis.}
 
 \item{y}{String. Response variable (e.g. "Yield").}
 
-\item{main}{String. Plot title.}
+\item{main}{String. Plot title prefix.}
 
-\item{...}{Additional arguments passed to `boxplot`.}
+\item{...}{Additional arguments passed to `plot` or `boxplot`.}
 }
 \description{
-Visualizes performance trends over time or across environments using boxplots.
+Visualizes performance trends over time using a combined Boxplot (distribution)
+and Linear Regression (rate of change) approach.
 }
