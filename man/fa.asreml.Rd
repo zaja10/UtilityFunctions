@@ -4,7 +4,7 @@
 \alias{fa.asreml}
 \title{Extract and Rotate Factor Analytic Model Parameters}
 \usage{
-fa.asreml(model, classify, psi_term = NULL, ...)
+fa.asreml(model, classify, psi_term = NULL, rotate = TRUE)
 }
 \arguments{
 \item{model}{A fitted object of class \code{asreml}.}
@@ -21,16 +21,17 @@ Must match the ASReml syntax used in the model call.
 Required only for **Reduced Rank** models where the diagonal variance is fitted
 separately (e.g., \code{"diag(Site):Genotype"}). If NULL for an RR model,
 specific variances are assumed to be zero.}
+
+\item{rotate}{Logical. If \code{TRUE} (default), loadings and scores are rotated
+to the Principal Component solution via SVD. If \code{FALSE}, raw parameters
+are returned (warning: FAST indices may be invalid without rotation).}
 }
 \value{
 An object of class \code{fa_asreml} containing:
 \describe{
-  \item{loadings}{A list containing \code{raw}, \code{rotated} (SVD), and \code{varimax} site loading matrices.}
+  \item{loadings}{A list containing \code{raw} and \code{rotated} site loading matrices.}
   \item{scores}{A list containing \code{raw} and \code{rotated} genotype score matrices (BLUPs).}
   \item{var_comp}{A list containing the extracted specific variances (\code{psi}) and a table of Variance Accounted For (\code{vaf}).}
-    \itemize{
-       \item Note: VAF is defined as the genetic variance explained by the factors relative to the \strong{total} genetic variance (\eqn{\Lambda\Lambda' + \Psi}).
-    }
   \item{matrices}{The estimated Genetic Covariance (\code{G}) and Genetic Correlation (\code{Cor}) matrices.}
   \item{fast}{A dataframe containing the FAST indices: Overall Performance (\code{OP}) and Stability (\code{RMSD}).}
   \item{meta}{Metadata regarding the model structure (k factors, model type).}

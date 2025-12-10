@@ -11,10 +11,10 @@ vignette: >
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  fig.width = 7,
-  fig.height = 6
+    collapse = TRUE,
+    comment = "#>",
+    fig.width = 7,
+    fig.height = 6
 )
 ```
 
@@ -52,11 +52,11 @@ df <- dasilva.maize
 # Fit FA2 Model
 # Note: We assume 'env' are environments and 'gen' are genotypes
 model_real <- asreml(
-  fixed = yield ~ env,
-  random = ~ fa(env, 2):gen + rep,
-  residual = ~ idv(units),
-  data = df,
-  trace = FALSE
+    fixed = yield ~ env,
+    random = ~ fa(env, 2):gen + rep,
+    residual = ~ idv(units),
+    data = df,
+    trace = FALSE
 ) # Suppress iteration output for vignette
 
 # Check variance components to confirm convergence
@@ -145,10 +145,6 @@ We generate synthetic marker data, calculate a GRM, and simulate phenotypes that
 genomic_sim <- generate_grm(n_gen = 150, n_markers = 2000, seed = 123)
 my_grm <- genomic_sim$grm
 
-# [NEW] Validate Genomic Rigor
-# Verify the GRM is properly scaled (mean diag ~ 1) for valid Oakey estimates
-validate_grm(my_grm)
-
 # 2. Generate Phenotypes driven by this GRM + Spatial Trends
 # h2 = 0.6 indicates strong genetic signal
 met_data <- generate_genomic_met(n_sites = 8, grm = my_grm, h2 = 0.6)
@@ -176,19 +172,15 @@ Spatial: Autoregressive (ar1) spatial errors on Rows and Columns.
 ```{r}
 # Fit Model
 mod_genomic <- asreml(
-  fixed = Yield ~ Site,
-  random = ~ fa(Site, 2):vm(Genotype, my_grm) + Rep,
-  residual = ~ Site:ar1(Row):ar1(Column), # Spatial residuals
-  data = met_data,
-  trace = FALSE
+    fixed = Yield ~ Site,
+    random = ~ fa(Site, 2):vm(Genotype, my_grm) + Rep,
+    residual = ~ Site:ar1(Row):ar1(Column), # Spatial residuals
+    data = met_data,
+    trace = FALSE
 )
 
 # One update to ensure convergence
 mod_genomic <- update(mod_genomic, trace = FALSE)
-
-# [NEW] Model Audit
-# Check if the model respects the spatial design (Row/Col terms present?)
-audit_model_terms(mod_genomic)
 ```
 
 ## 4. Spatial Diagnostics
@@ -227,77 +219,3 @@ Finally, we view the FAST plot for the Breeding Values (Additve Effects).
 ```{r}
 plot(results_g, type = "fast", n_label = 5)
 ```
-
-# Part 3: Biometric Rigor & Site Metrics
-
-New in version 1.2: rigorous site-specific quality metrics that handle heterogeneous genetic variances.
-
-## 1. Site Repeatability (Model-Based)
-
-We calculate the rigorous Reliability ($R$) for each site. Unlike simple variance ratios, this method uses `predict()` to obtain the **Prediction Error Variance (PEV)** of the BLUPs, providing a true measure of site quality that accounts for experimental design imbalance and specific variances.
-
-$$R_{site} = 1 - \frac{\text{PEV}_{avg}}{V_g}$$
-
-```{r}
-# Calculates rigorous R using PEV
-# Automatically handles predict() calls per site
-rep_df <- compare_repeatability(mod_genomic, results_g)
-print(head(rep_df))
-```
-
-## 2. Heritability & Reliability Comparison
-
-We compare standard phenotypic heritability (Cullis) against genomic reliability (Oakey). The "Oakey" method is the gold standard for genomic trials as it incorporates the GRM structure.
-
-```{r}
-# Compare methods. Note: 'classify' is auto-detected from results_g
-h2_df <- compare_h2(mod_genomic, results_g,
-  grm = my_grm,
-  methods = c("Cullis", "Oakey")
-)
-
-print(head(h2_df))
-```
-
-## 3. High-Throughput Visualizations
-
-We can visualize the Genetic Variances ($V_g$) directly to see which sites have the strongest signal, and use clustered heatmaps to find Mega-Environments.
-
-```{r}
-# A. Genetic Variance Barplot
-plot(results_g, type = "h2")
-
-# B. Clustered Genetic Correlation Heatmap
-# (Hierarchical clustering groups similar environments)
-plot(results_g, type = "heatmap")
-```
-
-
-# Part 4: Specialized Models (Reduced Rank)
-
-For advanced users fitting Reduced Rank models where specific variances are modeled separately (e.g., via `diag()`), `fa.asreml` supports flexible extraction.
-
-## Reduced Rank Extraction
-
-When fitting a model like:
-`random = ~ rr(Site, 2):Gen + diag(Site):Gen`
-
-You must explicitly tell `fa.asreml` where to find the specific variances using `psi_term`.
-
-```{r}
-# Example RR Model
-model_rr <- asreml(fixed = Yield ~ Site, 
-                   random = ~ rr(Site, 2):Gen + diag(Site):Gen, 
-                   ...)
-
-# Extraction
-# We pass psi_term to ensure the diagonal variances are captured
-results_rr <- fa.asreml(model_rr, 
-                        classify = "rr(Site, 2):Gen", 
-                        psi_term = "diag(Site):Gen")
-                        
-# Verify extraction
-print(results_rr) 
-```
-
-The toolkit matches the sites in the Reduced Rank loading matrix with the sites in the diagonal variance structure to correctly reconstruct the Genetic Covariance Matrix ($G = \Lambda\Lambda' + \Psi$).

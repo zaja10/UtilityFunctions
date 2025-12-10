@@ -19,6 +19,7 @@
 #'   \item \code{"vaf"}: **Site Quality**. A bar chart of Variance Accounted For (\%) per site.
 #'   \item \code{"d_opt"}: **Network Efficiency**. A bar chart of D-Optimality "Information Loss" (requires \code{get_d_optimality}).
 #'   \item \code{"diff"}: **Crossover Interaction**. A slope graph showing rank changes between Interaction Classes (requires \code{get_i_classes}).
+#'   \item \code{"h2"}: **Reliability/Repeatability**. A bar chart comparing Cullis/Standard metrics per site. Requires output from \code{compare_h2()}.
 #' }
 #' @param factor Integer or Vector. Controls which factors are visualized.
 #' \itemize{
@@ -65,7 +66,7 @@
 #'
 #' @return No return value, called for side effects (plotting).
 #'
-#' @seealso \code{\link{fa.asreml}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}
+#' @seealso \code{\link{fa.asreml}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}, \code{\link{compare_h2}}
 #'
 #' @examples
 #' \dontrun{
@@ -99,8 +100,9 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
   } else if (type == "diff") {
     .plot_diff(get_i_classes(x, if (is.null(factor)) 2 else factor), n_label, highlight)
   } else if (type == "h2") {
-    .plot_h2(x, ...)
-  } else {
+    .plot_h2(x)
+  } # Dispatch to h2 plotter
+  else {
     stop("Unknown type.")
   }
 }
@@ -132,58 +134,14 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
 }
 
 .plot_heat <- function(x) {
-  cor_mat <- x$matrices$Cor
-  # Use stats::heatmap for clustering (Rowv/Colv = NA means off, NULL means on)
-  # We want hierarchical clustering to group similar environments
-
-  # Color Palette: Red (Neg) -> White (0) -> Blue (Pos)
-  cols <- hcl.colors(20, "RdBu", rev = TRUE)
-
-  stats::heatmap(cor_mat,
-    Rowv = TRUE, Colv = TRUE,
-    symm = TRUE,
-    col = cols,
-    scale = "none",
-    margins = c(8, 8),
-    main = "Genetic Correlation (Clustered)"
-  )
-}
-
-.plot_h2 <- function(x, ...) {
-  # This function expects 'x' to be a dataframe returned by compare_h2 or compare_repeatability
-  # BUT standard dispatch is on fa_asreml object.
-  # The user might pass the RESULT of compare_h2, which is a data.frame.
-  # So we probably need a separate plot method for the H2 result, OR we extract Vg from fa_asreml?
-  # The Feature Roadmap said: "Function: plot(fa_obj, type = 'h2')"
-  # But fa_obj doesn't store the H2 results unless we added them.
-  # It assumes we visualize VAF? "Bar chart of VAF" is already .plot_vaf.
-
-  # If the user wants to visualize Heritability, they realistically need to pass the H2 object.
-  # However, to stick to the roadmap "plot(fa_obj, type='h2')",
-  # maybe we calculate a crude proxy? 1 - Mean(PEV)/Vg?
-  # PEV requires predict(). We can't run predict inside plot().
-  #
-  # CORRECTION: The roadmap might have implied plotting the TABLE returned by compare_h2.
-  # But since plot() dispatches on class, we need `plot.compare_h2_results`?
-  # Or we just interpret `type="vaf"` as the closest proxy in fa_asreml.
-  #
-  # Alternative: Check if 'x' has a specific slot? No.
-  #
-  # Let's fallback to calculating VAF (which IS Heritability of the Factors).
-  # If the user passes a data.frame to plot_spatial, that works.
-  # Let's assume for now .plot_h2 might need an external object,
-  # but since I am constrained to plot.fa_asreml, I will make .plot_h2
-  # visualize the Genetic Variances (Vg) which ARE in the object.
-
-  G_diag <- diag(x$matrices$G)
-  site_stats <- data.frame(Site = names(G_diag), Vg = G_diag)
-  site_stats <- site_stats[order(site_stats$Vg), ]
-
-  par(mar = c(5, 7, 4, 2))
-  barplot(site_stats$Vg,
-    names.arg = site_stats$Site, horiz = T, las = 1,
-    col = "forestgreen", xlab = "Genetic Variance (Vg)", main = "Site Genetic Variance"
-  )
+  cor <- x$matrices$Cor
+  p <- ncol(cor)
+  rev <- cor[, p:1]
+  par(mar = c(6, 6, 4, 2))
+  image(1:p, 1:p, rev, axes = F, col = hcl.colors(20, "RdBu", rev = T), breaks = seq(-1, 1, l = 21), main = "Correlation")
+  axis(1, at = 1:p, labels = colnames(cor), las = 2, cex.axis = 0.7)
+  axis(2, at = 1:p, labels = rev(rownames(cor)), las = 1, cex.axis = 0.7)
+  for (i in 1:p) for (j in 1:p) if (rev[i, j] < 0.99) text(i, j, sprintf("%.2f", rev[i, j]), cex = 0.6)
 }
 
 .plot_reg <- function(x, fac, h, n) {

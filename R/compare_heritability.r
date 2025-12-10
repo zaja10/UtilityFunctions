@@ -1,16 +1,20 @@
-#' Compare Site-Specific Heritability Metrics for FA Models
+#' Compare Site-Specific Heritability Metrics
 #'
 #' @description
 #' Calculates and compares three standard heritability metrics (Cullis, Oakey, Standard)
-#' for each environment within a Factor Analytic (FA) or Reduced Rank (RR) model.
-#' It leverages the heterogeneous genetic variances ($\sigma^2_{g_j}$) estimated by the FA model.
+#' for each environment. Supports Factor Analytic (FA), Unstructured (US), Diagonal,
+#' and Single-Site models.
 #'
 #' @param model A fitted \code{asreml} object.
-#' @param fa_object An object of class \code{fa_asreml} produced by \code{fa.asreml()}.
+#' @param fa_object Optional. An object of class \code{fa_asreml} produced by \code{fa.asreml()}.
+#'        If provided, Vg is extracted from the FA reconstruction. If NULL, Vg is extracted
+#'        directly from the model summary (supports US, Diag, and scalar components).
 #' @param grm Optional. The genomic relationship matrix (inverse not required).
 #'        Required only for the "Oakey" method.
-#' @param classify Character string. The prediction term. If NULL, attempts to detect
-#'        automatically from \code{fa_object$meta$classify}.
+#' @param classify Character string. The prediction term (e.g. "Site:Genotype" or "Genotype").
+#'        If NULL, attempts to detect automatically from \code{fa_object}.
+#' @param id_var Character string. The name of the genotype factor (trace term).
+#'        Defaults to "Genotype". Used when parsing variance components if fa_object is NULL.
 #' @param methods Character vector. Metrics to calculate: c("Cullis", "Oakey", "Standard").
 #'
 #' @return A data.frame summarizing H2, Genetic Variance (Vg), and Error Metrics per Site.
@@ -18,10 +22,16 @@
 #' @details
 #' \strong{Metrics:}
 #' \itemize{
-#'   \item \strong{Standard:} \eqn{1 - (PEV / V_g)}. Simple but often biased in unbalanced trials.
-#'   \item \strong{Cullis:} \eqn{1 - (\bar{v}_{\Delta}^{BLUP} / 2V_g)}. The standard for phenotypic trials.
-#'   \item \strong{Oakey:} \eqn{1 - tr(C^{22}G^{-1})/n}. The gold standard for genomic trials.
+#'   \item \strong{Standard (Line Mean):} \eqn{1 - (PEV / V_g)}. Often referred to as Line Mean Reliability or Repeatability.
+#'   \item \strong{Cullis (Generalized Repeatability):} \eqn{1 - (\bar{v}_{\Delta}^{BLUP} / 2V_g)}. Generalized Heritability/Repeatability for phenotypic trials.
+#'   \item \strong{Oakey (Genomic Reliability):} \eqn{1 - tr(C^{22}G^{-1})/n}. Gold standard for genomic prediction accuracy.
 #' }
+#'
+#' \strong{Note on Terminology:}
+#' While often loosely called "Heritability", these PEV-based metrics are technically forms of
+#' \strong{Generalized Repeatability} or \strong{Reliability} (Squared Accuracy) of the
+#' predictions. True heritability is defined as the slope of the regression of True Genetic Values
+#' on Phenotypes (or BLUEs on BLUPs), which requires knowing the true effects or fitting dual models.
 #'
 #' \strong{Optimizations:}
 #' This function implements two key optimizations for large-scale genomic trials:
@@ -37,198 +47,212 @@
 #' @importFrom MASS ginv
 #' @importFrom utils txtProgressBar setTxtProgressBar
 #' @export
-compare_h2 <- function(model, fa_object, grm = NULL,
-                       classify = NULL,
+compare_h2 <- function(model, fa_object = NULL, grm = NULL,
+                       classify = NULL, id_var = "Genotype",
                        methods = c("Cullis", "Oakey", "Standard")) {
-    if (!inherits(fa_object, "fa_asreml")) stop("fa_object must be of class 'fa_asreml'.")
+    # --- STEP 1: VARIANCE EXTRACTION (SAME AS ABOVE) ---
+    site_stats <- NULL
+    sites <- NULL
+    site_term <- NULL
+    is_multisite <- FALSE
+    site_term_name <- NULL # The actual column name
 
-    # Auto-detect classify if NULL
-    if (is.null(classify)) {
-        if (!is.null(fa_object$meta$classify)) {
-            classify <- fa_object$meta$classify
-            cat(sprintf("-> Detected prediction term: '%s'\n", classify))
+    if (!is.null(fa_object)) {
+        if (!inherits(fa_object, "fa_asreml")) stop("fa_object must be of class 'fa_asreml'.")
+        if (is.null(classify) && !is.null(fa_object$meta$classify)) classify <- fa_object$meta$classify
+
+        cat("-> Extracting Vg from FA object...\n")
+        G_mat <- fa_object$matrices$G
+        site_stats <- data.frame(Site = rownames(G_mat), Vg = diag(G_mat))
+        sites <- as.character(site_stats$Site)
+        is_multisite <- TRUE
+
+        # Heuristic
+        term_parts <- unlist(strsplit(classify, ":"))
+        site_term_name <- term_parts[1]
+    } else {
+        if (is.null(classify)) stop("The 'classify' argument is required when fa_object is NULL.")
+        cat("-> Extracting Vg from Model Summary...\n")
+
+        vc <- summary(model)$varcomp
+        vc_names <- rownames(vc)
+        term_parts <- unlist(strsplit(classify, ":"))
+
+        if (length(term_parts) > 1) {
+            site_term_name <- term_parts[1]
+            id_var <- term_parts[2]
+            is_multisite <- TRUE
+
+            # Try to get sites from data
+            data_name <- as.character(model$call$data)
+            if (exists(data_name)) {
+                df <- get(data_name)
+                if (site_term_name %in% names(df)) {
+                    sites <- as.character(unique(df[[site_term_name]]))
+                    sites <- sites[!is.na(sites)]
+                }
+            }
+            if (is.null(sites)) stop("Could not determine site levels (data not found).")
+
+            vg_list <- list()
+            # Basic grep for Vg
+            for (s in sites) {
+                # Strategy: Convert site name to regex safe pattern?
+                # Assuming ASReml component naming: "Term!Level"
+                # Or "us(Term):Gen!Level:Level"
+
+                # 1. Find components containing the site name
+                matches <- grep(s, vc_names, fixed = TRUE, value = TRUE)
+                # 2. Must contain genotype term
+                matches <- grep(id_var, matches, fixed = TRUE, value = TRUE)
+
+                val <- NA
+                if (length(matches) > 0) {
+                    # Take the first one that looks like a variance (diagonal)
+                    # If US, expect "s:s"
+                    # If Diag/At, expect just "s" at end or "at(..., s)"
+
+                    # Preference logic:
+                    us_diag <- grep(paste0(s, ":", s), matches, fixed = TRUE)
+                    if (length(us_diag) > 0) {
+                        val <- vc[matches[us_diag[1]], "component"]
+                    } else {
+                        val <- vc[matches[1], "component"]
+                    } # Fallback
+                }
+
+                if (!is.na(val)) vg_list[[s]] <- val
+            }
+            if (length(vg_list) == 0) stop("Could not extract Vg. Check model terms.")
+            site_stats <- data.frame(Site = names(vg_list), Vg = as.numeric(vg_list))
+            sites <- as.character(site_stats$Site)
         } else {
-            stop("Classify term not provided and not found in fa_object metadata.")
+            cat("-> Detected Single-Site/Global model.\n")
+            is_multisite <- FALSE
+            sites <- "Global"
+            # Scalar Vg
+            idx <- grep(id_var, vc_names)
+            if (length(idx) == 0) stop("No Vg found.")
+            Vg <- vc[idx[1], "component"]
+            site_stats <- data.frame(Site = "Global", Vg = Vg)
         }
     }
 
-    # 1. SETUP: Extract Site-Specific Genetic Variances
-    # -------------------------------------------------
-    # We use the diagonal of the reconstructed G matrix (Lambda*Lambda' + Psi)
-    G_mat <- fa_object$matrices$G
-    site_stats <- data.frame(Site = rownames(G_mat), Vg = diag(G_mat))
-    sites <- as.character(site_stats$Site)
-
-    # Pre-calculate GRM Inverse for Oakey if needed
+    # GRM setup
     grm_inv <- NULL
     if ("Oakey" %in% methods) {
         if (is.null(grm)) {
-            warning("GRM missing. Skipping Oakey method.")
+            warning("GRM missing. Skipping Oakey.")
             methods <- setdiff(methods, "Oakey")
         } else {
-            cat("-> Inverting GRM for Oakey calculation...\n")
-            # Use tryCatch for robust inversion (singular matrices common in markers)
             grm_inv <- tryCatch(solve(grm), error = function(e) MASS::ginv(grm))
         }
     }
 
     results_list <- list()
 
-    # Parse site column name from classify string (e.g. "Site:Genotype" -> "Site")
-    # Assuming the first term is the site term for splitting
-    term_parts <- unlist(strsplit(classify, ":"))
-
-    # CLEAN CLASSIFY FOR PREDICT:
-    # Transform "fa(Site,2):Gen" -> "Site:Gen"
-    # Transform "rr(Site,2):Gen" -> "Site:Gen"
-    # This ensures predict() sums BOTH the rr() term AND the diag() term for RR models.
-    clean_factors <- sapply(term_parts, function(x) {
-        # Remove function calls parentheses e.g. fa(Site,2) -> Site
-        # Regex: remove everything from ( to end, and descriptors?
-        # ASReml syntax is tricky. "fa(Site, k)" -> we want "Site".
-        # "gn(Gen)" -> "Gen"
-        # Simple heuristic: extract the variable name inside the first parens if present.
-        if (grepl("\\(", x)) {
-            sub("^[a-z]+\\(([^,]+).*", "\\1", x) # Extract first arg of function
-        } else {
-            x
-        }
-    })
-    classify_for_predict <- paste(clean_factors, collapse = ":")
-
-    site_term <- clean_factors[1] # Heuristic: First term is usually Site/Env
-
-    cat(sprintf("-> Running split predictions for '%s' (Term: %s) across %d sites...\n", classify_for_predict, classify, length(sites)))
-
-    # Progress Bar
-    pb <- utils::txtProgressBar(min = 0, max = length(sites), style = 3)
-
-    # 2. LOOP BY SITE (Optimization: Split Prediction)
-    # ------------------------------------------------
+    if (is_multisite) {
+        cat(sprintf("-> Running split predictions across %d sites...\n", length(sites)))
+        pb <- utils::txtProgressBar(min = 0, max = length(sites), style = 3)
+    }
 
     for (i in seq_along(sites)) {
-        site <- sites[i]
-        utils::setTxtProgressBar(pb, i)
+        site_label <- sites[i]
+        if (is_multisite) utils::setTxtProgressBar(pb, i)
 
-        # Run predict for this specific site ONLY.
-        # We restrict the level of the site factor to just the current site.
-        # This forces ASReml to compute PEV only for the relevant subset, saving RAM.
+        # Setup prediction args
+        pred_args <- list(
+            object = model, classify = classify, only = classify,
+            sed = "Cullis" %in% methods,
+            vcov = any(c("Oakey", "Standard") %in% methods),
+            trace = FALSE
+        )
 
-        # Construct levels list dynamically
-        levels_list <- list()
-        levels_list[[site_term]] <- site
+        # If multisite, restrict levels
+        if (is_multisite) {
+            lvl <- list()
+            lvl[[site_term_name]] <- site_label
+            pred_args$levels <- lvl
+        }
 
+        # Execute
         tryCatch(
             {
-                preds <- asreml::predict.asreml(model,
-                    classify = classify_for_predict,
-                    levels = levels_list,
-                    only = classify_for_predict, # Minimize output size
-                    sed = "Cullis" %in% methods, # Needed for Cullis
-                    vcov = any(c("Oakey", "Standard") %in% methods), # Needed for Oakey/Standard
-                    trace = FALSE
-                )
+                preds <- do.call(asreml::predict.asreml, pred_args)
 
                 pvals <- preds$pvals
                 total_sed <- preds$sed
                 total_vcov <- preds$vcov
 
-                # Filter indices (should be all of them since we filtered by levels, but double check)
-                # pvals usually contains the columns specified in classify
-                # We find the column that matches the site name
-                # Note: pvals column names might match term_parts
-
-                # Since we predicted for ONE site, all rows in pvals should belong to that site
-                # (or ASReml might return all with NAs, depending on version, but levels usually restricts it)
-
-                # Let's find the valid rows for this site
-                site_col_idx <- which(sapply(pvals, function(c) any(c == site)))
-                if (length(site_col_idx) > 0) {
-                    idx <- which(pvals[[site_col_idx[1]]] == site)
+                # Identify valid indices
+                if (is_multisite) {
+                    # Find column matching site_term_name
+                    if (!site_term_name %in% names(pvals)) {
+                        # Warning: Classify string might not match column names in pvals?
+                        # Case: Classify "Site:Genotype", pvals cols "Site", "Genotype"
+                        # Just use logic: find column that has value 'site_label'
+                        # But safer to filter by rows
+                    }
+                    # Because we used 'levels=', hopefully only relevant rows returned?
+                    # ASReml sometimes returns all rows with NAs.
+                    # Filter where Site == site_label
+                    idx <- which(pvals[[site_term_name]] == site_label)
                 } else {
-                    # Fallback: assume all rows if prediction worked for single level
                     idx <- 1:nrow(pvals)
                 }
 
                 n_gen <- length(idx)
+                if (n_gen == 0) next
 
-                if (n_gen == 0) {
-                    warning(sprintf("No predictions found for site %s", site))
-                    next
-                }
+                Vg <- site_stats$Vg[site_stats$Site == site_label]
 
-                # Get local Genetic Variance
-                Vg <- site_stats$Vg[site_stats$Site == site]
-
-                # --- A. CULLIS (Phenotypic Standard) ---
+                # --- METRICS ---
                 if ("Cullis" %in% methods && !is.null(total_sed)) {
-                    # Extract SED sub-matrix
                     sub_sed <- total_sed[idx, idx]
-
-                    # Calculation: Mean Variance of Difference / 2*Vg
-                    # Square SED to get Variances of Difference
                     vd_mat <- sub_sed^2
                     avg_vd <- mean(vd_mat[upper.tri(vd_mat, diag = FALSE)], na.rm = TRUE)
+                    if (is.nan(avg_vd)) avg_vd <- 0 # Single genotype case?
 
-                    h_cullis <- 1 - (avg_vd / (2 * Vg))
-                    results_list[[paste0(site, "_Cullis")]] <- data.frame(
-                        Site = site, Method = "Cullis", Value = h_cullis, Reliability = h_cullis, Vg = Vg
+                    results_list[[paste0(site_label, "_Cullis")]] <- data.frame(
+                        Site = site_label, Method = "Cullis", Value = 1 - (avg_vd / (2 * Vg)), Vg = Vg
                     )
                 }
 
-                # --- B. OAKEY (Genomic Standard) ---
-                if ("Oakey" %in% methods && !is.null(grm_inv) && !is.null(total_vcov)) {
-                    # Extract PEV (VCOV) sub-matrix
-                    sub_vcov <- total_vcov[idx, idx]
-
-                    # We must match the GRM dimensions to the sub_vcov dimensions.
-                    # Genotype column: identify the column that is NOT the site column
-                    gen_col_name <- setdiff(names(pvals), site_term)[1] # Heuristic
-                    if (is.na(gen_col_name)) gen_col_name <- names(pvals)[2] # Fallback
-
-                    current_gens <- as.character(pvals[[gen_col_name]][idx])
-
-                    if (all(current_gens %in% rownames(grm_inv))) {
-                        sub_grm_inv <- grm_inv[current_gens, current_gens]
-
-                        # Optimization: Trace(A %*% B) = Sum(Elementwise(A * t(B)))
-                        # Since both are symmetric: Sum(A * B)
-                        trace_val <- sum(sub_vcov * sub_grm_inv)
-
-                        # Oakey Formula: 1 - (Trace / (n * Vg_local))
-                        # Note: We scale G_inv by (1/Vg) effectively
-                        h_oakey <- 1 - (trace_val / (n_gen * Vg))
-
-                        results_list[[paste0(site, "_Oakey")]] <- data.frame(
-                            Site = site, Method = "Oakey", Value = h_oakey, Reliability = h_oakey, Vg = Vg
-                        )
-                    } else {
-                        # warning(sprintf("Genotype mismatch in Oakey calc for site %s", site))
-                    }
-                }
-
-                # --- C. STANDARD (Line Mean) ---
                 if ("Standard" %in% methods && !is.null(total_vcov)) {
-                    # Mean PEV
                     sub_pev <- diag(total_vcov)[idx]
                     mean_pev <- mean(sub_pev, na.rm = TRUE)
-
-                    h_std <- 1 - (mean_pev / Vg)
-                    results_list[[paste0(site, "_Std")]] <- data.frame(
-                        Site = site, Method = "Standard", Value = h_std, Reliability = h_std, Vg = Vg
+                    results_list[[paste0(site_label, "_Std")]] <- data.frame(
+                        Site = site_label, Method = "Standard", Value = 1 - (mean_pev / Vg), Vg = Vg
                     )
                 }
+
+                if ("Oakey" %in% methods && !is.null(grm_inv)) {
+                    # Match genotypes
+                    # Find genotype col
+                    gen_cols <- setdiff(names(pvals), c(site_term_name, "predicted.value", "standard.error", "status"))
+                    # Heuristic: usually last term in classify
+                    gen_col_name <- tail(unlist(strsplit(classify, ":")), 1)
+
+                    current_gens <- as.character(pvals[[gen_col_name]][idx])
+                    if (all(current_gens %in% rownames(grm_inv))) {
+                        sub_vcov <- total_vcov[idx, idx]
+                        sub_grm <- grm_inv[current_gens, current_gens]
+                        trace_val <- sum(sub_vcov * sub_grm)
+                        results_list[[paste0(site_label, "_Oakey")]] <- data.frame(
+                            Site = site_label, Method = "Oakey", Value = 1 - (trace_val / (n_gen * Vg)), Vg = Vg
+                        )
+                    }
+                }
             },
-            error = function(e) {
-                warning(sprintf("Prediction failed for site %s: %s", site, e$message))
-            }
+            error = function(e) warning(paste("Error site", site_label, ":", e$message))
         )
     }
 
-    close(pb)
-
-    # Compile Results
-    final_df <- do.call(rbind, results_list)
-    rownames(final_df) <- NULL
-    return(final_df)
+    if(is_multisite) close(pb)
+  
+  final_df <- do.call(rbind, results_list)
+  rownames(final_df) <- NULL
+  class(final_df) <- c("h2_comparison", "data.frame")
+  return(final_df)
 }
+

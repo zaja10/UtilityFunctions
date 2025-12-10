@@ -1,0 +1,39 @@
+calc_cross_variance_cpp
+                        Calculate Gametic Variance for a Cross
+                        (Biparental)
+calculate_h2_from_list
+                        Calculate Heritability from a List of ASReml
+                        Models
+calculate_index         Calculate Selection Index
+check_connectivity      Check Trial Network Connectivity
+compare_h2              Compare Site-Specific Heritability Metrics
+convert_buac_to_tha     Convert Yield Units
+diagnose_design         Diagnose Trial Design Structure
+fa.asreml               Extract and Rotate Factor Analytic Model
+                        Parameters
+fast_tools              Factor Analytic Selection Tools (FAST)
+generate_genomic_met    Generate Genomic MET Data
+generate_grm            Generate Synthetic Genomic Relationship Matrix
+                        (GRM)
+generate_met_data       Generate Synthetic MET Data
+get_connectivity        Calculate Connectivity Matrix
+get_d_optimality        Calculate D-Optimality (Network Efficiency)
+get_i_classes           Calculate Interaction Classes (iClasses)
+met_diagnostics         MET Dataset Diagnostics & Visualization
+pad_trial_layout        Pad Trial Layout for Spatial Analysis
+plot.design_tableau     Plot Design Tableau
+plot.fa_asreml          Master Visualization Suite for Factor Analytic
+                        Models
+plot.fast_selection     Plot FAST Selection
+plot.h2_comparison      Plot Heritability/Reliability Comparison
+plot_connectivity       Visualise MET Connectivity
+plot_met_trend          Plot MET Trends
+plot_spatial            Plot Spatial Field Map (Robust)
+plot_trial_map          Flexible Trial Map
+predict_cross_utility   Population Genetics & Cross Prediction
+print.design_diagnosis
+                        Print Design Diagnosis
+print.fa_asreml         Print Method for FA Object
+print.summary.fa_asreml
+                        Print Method for Summary
+summary.fa_asreml       Summary Method for FA Object

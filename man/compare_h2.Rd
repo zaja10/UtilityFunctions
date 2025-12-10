@@ -2,26 +2,32 @@
 % Please edit documentation in R/compare_heritability.r
 \name{compare_h2}
 \alias{compare_h2}
-\title{Compare Site-Specific Heritability Metrics for FA Models}
+\title{Compare Site-Specific Heritability Metrics}
 \usage{
 compare_h2(
   model,
-  fa_object,
+  fa_object = NULL,
   grm = NULL,
   classify = NULL,
+  id_var = "Genotype",
   methods = c("Cullis", "Oakey", "Standard")
 )
 }
 \arguments{
 \item{model}{A fitted \code{asreml} object.}
 
-\item{fa_object}{An object of class \code{fa_asreml} produced by \code{fa.asreml()}.}
+\item{fa_object}{Optional. An object of class \code{fa_asreml} produced by \code{fa.asreml()}.
+If provided, Vg is extracted from the FA reconstruction. If NULL, Vg is extracted
+directly from the model summary (supports US, Diag, and scalar components).}
 
 \item{grm}{Optional. The genomic relationship matrix (inverse not required).
 Required only for the "Oakey" method.}
 
-\item{classify}{Character string. The prediction term. If NULL, attempts to detect
-automatically from \code{fa_object$meta$classify}.}
+\item{classify}{Character string. The prediction term (e.g. "Site:Genotype" or "Genotype").
+If NULL, attempts to detect automatically from \code{fa_object}.}
+
+\item{id_var}{Character string. The name of the genotype factor (trace term).
+Defaults to "Genotype". Used when parsing variance components if fa_object is NULL.}
 
 \item{methods}{Character vector. Metrics to calculate: c("Cullis", "Oakey", "Standard").}
 }
@@ -30,16 +36,22 @@ A data.frame summarizing H2, Genetic Variance (Vg), and Error Metrics per Site.
 }
 \description{
 Calculates and compares three standard heritability metrics (Cullis, Oakey, Standard)
-for each environment within a Factor Analytic (FA) or Reduced Rank (RR) model.
-It leverages the heterogeneous genetic variances ($\sigma^2_{g_j}$) estimated by the FA model.
+for each environment. Supports Factor Analytic (FA), Unstructured (US), Diagonal,
+and Single-Site models.
 }
 \details{
 \strong{Metrics:}
 \itemize{
-  \item \strong{Standard:} \eqn{1 - (PEV / V_g)}. Simple but often biased in unbalanced trials.
-  \item \strong{Cullis:} \eqn{1 - (\bar{v}_{\Delta}^{BLUP} / 2V_g)}. The standard for phenotypic trials.
-  \item \strong{Oakey:} \eqn{1 - tr(C^{22}G^{-1})/n}. The gold standard for genomic trials.
+  \item \strong{Standard (Line Mean):} \eqn{1 - (PEV / V_g)}. Often referred to as Line Mean Reliability or Repeatability.
+  \item \strong{Cullis (Generalized Repeatability):} \eqn{1 - (\bar{v}_{\Delta}^{BLUP} / 2V_g)}. Generalized Heritability/Repeatability for phenotypic trials.
+  \item \strong{Oakey (Genomic Reliability):} \eqn{1 - tr(C^{22}G^{-1})/n}. Gold standard for genomic prediction accuracy.
 }
+
+\strong{Note on Terminology:}
+While often loosely called "Heritability", these PEV-based metrics are technically forms of
+\strong{Generalized Repeatability} or \strong{Reliability} (Squared Accuracy) of the
+predictions. True heritability is defined as the slope of the regression of True Genetic Values
+on Phenotypes (or BLUEs on BLUPs), which requires knowing the true effects or fitting dual models.
 
 \strong{Optimizations:}
 This function implements two key optimizations for large-scale genomic trials:

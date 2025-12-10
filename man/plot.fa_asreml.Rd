@@ -18,6 +18,7 @@
   \item \code{"vaf"}: **Site Quality**. A bar chart of Variance Accounted For (\%) per site.
   \item \code{"d_opt"}: **Network Efficiency**. A bar chart of D-Optimality "Information Loss" (requires \code{get_d_optimality}).
   \item \code{"diff"}: **Crossover Interaction**. A slope graph showing rank changes between Interaction Classes (requires \code{get_i_classes}).
+  \item \code{"h2"}: **Reliability/Repeatability**. A bar chart comparing Cullis/Standard metrics per site. Requires output from \code{compare_h2()}.
 }}
 
 \item{factor}{Integer or Vector. Controls which factors are visualized.
@@ -92,5 +93,5 @@ plot(results, type = "heatmap")
 }
 }
 \seealso{
-\code{\link{fa.asreml}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}
+\code{\link{fa.asreml}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}, \code{\link{compare_h2}}
 }
