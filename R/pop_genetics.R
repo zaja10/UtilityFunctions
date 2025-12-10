@@ -1,20 +1,16 @@
-#' Population Genetics & Cross Prediction Tools
-#'
-#' @description
-#' A suite of tools for breeding program optimization. Includes functions to:
-#' \itemize{
-#'   \item Predict **Usefulness Criterion (UC)** of biparental crosses.
-#'   \item Calculate gametic variance using recombination maps.
-#' }
-#' This allows breeders to select parental combinations that maximize the probability
-#' of generating superior progeny.
+# Population Genetics & Cross Prediction Tools
+#
+# A suite of tools for breeding program optimization. Includes functions to:
+#   * Predict **Usefulness Criterion (UC)** of biparental crosses.
+#   * Calculate gametic variance using recombination maps.
+#
+# This allows breeders to select parental combinations that maximize the probability
+# of generating superior progeny.
 
 #' Predict Cross Utility (Usefulness Criterion)
 #'
 #' @description
 #' Calculates the Usefulness Criterion (UC) for potential crosses between a set of parents.
-#' \deqn{UC = \mu + (i \times \sigma_{prog})}
-#' where \eqn{\mu} is the mid-parent value and \eqn{\sigma_{prog}} is the predicted gametic standard deviation.
 #'
 #' @param parents Character vector of parent IDs to cross (all pairwise combinations will be generated).
 #'        Alternatively, a dataframe with columns "Parent1" and "Parent2".
@@ -23,15 +19,14 @@
 #' @param map Named numeric vector of marker positions in Morgans (NOT cM).
 #' @param i_sel Numeric. Selection intensity (standardized). Default is 2.06 (Top 5%).
 #'
-#' @return A dataframe containing:
-#' \describe{
-#'   \item{Parent1, Parent2}{The cross combination.}
-#'   \item{Mu}{Mid-parent breeding value.}
-#'   \item{Sigma}{Predicted standard deviation of the progeny.}
-#'   \item{UC}{The Usefulness Criterion.}
-#' }
+#' @return A dataframe containing the columns Parent1, Parent2, Mu, Sigma, and UC (Usefulness Criterion).
+
 #'
 #' @details
+#' The Usefulness Criterion (UC) is calculated as:
+#' UC = mu + (i * sigma_prog)
+#' where mu is the mid-parent value and sigma_prog is the predicted gametic standard deviation.
+#'
 #' This function uses a C++ backend (\code{calc_cross_variance_cpp}) to efficiently calculate the
 #' expected variance of F2 progeny accounting for linkage disequilibrium between markers.
 #'

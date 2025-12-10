@@ -7,19 +7,22 @@
 generate_genomic_met(n_sites = 10, grm, n_reps = 2, h2 = 0.5)
 }
 \arguments{
-\item{n_sites}{Integer. Number of environments.}
+\item{n_sites}{Integer. Number of environments to simulate.}
 
-\item{grm}{Matrix. A relationship matrix (e.g., from \code{generate_grm}).}
+\item{grm}{Matrix. The relationship matrix (e.g. from \code{generate_grm()}).
+Genotypes in the GRM define the population.}
 
-\item{n_reps}{Integer. Replicates per site.}
+\item{n_reps}{Integer. Number of replicates per site.}
 
-\item{h2}{Numeric. Heritability (0-1). Controls the signal-to-noise ratio.}
+\item{h2}{Numeric (0 to 1). The target Heritability (Broad Sense) for the trial.
+Lower h2 implies higher residual noise.}
 }
 \value{
-A dataframe containing spatial coordinates and yield, suitable for
-genomic GxE analysis.
+A dataframe with columns:
+\code{Site, Genotype, Rep, Row, Column, Yield}.
 }
 \description{
-Simulates a MET where variety performance is determined by a Genomic Relationship
-Matrix (GRM). Designed for testing \code{vm()} terms in ASReml.
+Simulates a Multi-Environment Trial (MET) where the genetic signal is strictly
+controlled by a user-provided Genomic Relationship Matrix (GRM). This is ideal
+for validating `vm()` (variance model) terms in ASReml-R.
 }

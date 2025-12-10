@@ -6,6 +6,26 @@
 \usage{
 generate_grm(n_gen = 200, n_markers = 1000, seed = 123)
 }
+\arguments{
+\item{n_gen}{Integer. Number of genotypes to simulate.}
+
+\item{n_markers}{Integer. Number of SNP markers.}
+
+\item{seed}{Integer. Seed for reproducibility.}
+}
+\value{
+A list containing:
+\describe{
+  \item{grm}{The calculated GRM (n_gen x n_gen).}
+  \item{markers}{The raw allele dosage matrix (0, 1, 2).}
+}
+}
 \description{
-Generate Synthetic Genomic Relationship Matrix (GRM)
+Creates a Genomic Relationship Matrix (GRM) using the VanRaden (2008) Method 1.
+\deqn{G = \frac{ZZ'}{2 \sum p_i (1-p_i)}}
+where \eqn{Z} is the centered genotype matrix ($M - 2P$).
+}
+\references{
+VanRaden, P. M. (2008). Efficient methods to compute genomic predictions. 
+\emph{Journal of dairy science}, 91(11), 4414-4423.
 }

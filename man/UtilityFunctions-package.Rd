@@ -11,8 +11,8 @@ A specialized suite for processing factor analytic models. Implements "FAST" sel
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/zaja10/GenomicFlow}
-  \item Report bugs at \url{https://github.com/zaja10/GenomicFlow/issues}
+  \item \url{https://github.com/zaja10/UtilityFunctions}
+  \item Report bugs at \url{https://github.com/zaja10/UtilityFunctions/issues}
 }
 
 }

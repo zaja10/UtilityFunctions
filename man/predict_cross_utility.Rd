@@ -2,7 +2,7 @@
 % Please edit documentation in R/pop_genetics.R
 \name{predict_cross_utility}
 \alias{predict_cross_utility}
-\title{Population Genetics & Cross Prediction}
+\title{Predict Cross Utility (Usefulness Criterion)}
 \usage{
 predict_cross_utility(parents, markers, effects, map, i_sel = 2.06)
 }
@@ -19,23 +19,16 @@ Alternatively, a dataframe with columns "Parent1" and "Parent2".}
 \item{i_sel}{Numeric. Selection intensity (standardized). Default is 2.06 (Top 5%).}
 }
 \value{
-A dataframe containing:
-\describe{
-  \item{Parent1, Parent2}{The cross combination.}
-  \item{Mu}{Mid-parent breeding value.}
-  \item{Sigma}{Predicted standard deviation of the progeny.}
-  \item{UC}{The Usefulness Criterion.}
-}
+A dataframe containing the columns Parent1, Parent2, Mu, Sigma, and UC (Usefulness Criterion).
 }
 \description{
-Tools for predicting the value of crosses based on genomic data.
-Predict Cross Utility (Usefulness Criterion)
-
 Calculates the Usefulness Criterion (UC) for potential crosses between a set of parents.
-\deqn{UC = \mu + (i \times \sigma_{prog})}
-where \eqn{\mu} is the mid-parent value and \eqn{\sigma_{prog}} is the predicted gametic standard deviation.
 }
 \details{
+The Usefulness Criterion (UC) is calculated as:
+UC = mu + (i * sigma_prog)
+where mu is the mid-parent value and sigma_prog is the predicted gametic standard deviation.
+
 This function uses a C++ backend (\code{calc_cross_variance_cpp}) to efficiently calculate the
 expected variance of F2 progeny accounting for linkage disequilibrium between markers.
 }
