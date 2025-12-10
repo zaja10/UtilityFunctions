@@ -1,0 +1,92 @@
+
+R version 4.5.1 (2025-06-13) -- "Great Square Root"
+Copyright (C) 2025 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin20
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> pkgname <- "UtilityFunctions"
+> source(file.path(R.home("share"), "R", "examples-header.R"))
+> options(warn = 1)
+> library('UtilityFunctions')
+Loading required package: asreml
+Loading required package: Matrix
+Online License checked out Wed Dec 10 15:02:32 2025
+Loading ASReml-R version 4.2
+
+> 
+> base::assign(".oldSearch", base::search(), pos = 'CheckExEnv')
+> base::assign(".old_wd", base::getwd(), pos = 'CheckExEnv')
+> cleanEx()
+> nameEx("calculate_h2_from_list")
+> ### * calculate_h2_from_list
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: calculate_h2_from_list
+> ### Title: Calculate Heritability from a List of ASReml Models
+> ### Aliases: calculate_h2_from_list
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Assuming 'fm' is a list like fm <- list(fm0=model0, fm1=model1, ...)
+> ##D heritabilities <- calculate_h2_from_list(fm, id = "Variety")
+> ##D print(heritabilities)
+> ## End(Not run)
+> 
+> 
+> 
+> cleanEx()
+> nameEx("plot.fa_asreml")
+> ### * plot.fa_asreml
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: plot.fa_asreml
+> ### Title: Master Visualization Suite for Factor Analytic Models
+> ### Aliases: plot.fa_asreml
+> 
+> ### ** Examples
+> 
+> ## Not run: 
+> ##D # Standard Selection View
+> ##D plot(results, type = "fast", n_label = 5, highlight = c("CheckA", "CheckB"))
+> ##D 
+> ##D # Investigate GxE Drivers (Factor 2)
+> ##D plot(results, type = "latent_reg", factor = 2)
+> ##D 
+> ##D # View Network Structure
+> ##D plot(results, type = "biplot", factor = c(1, 2))
+> ##D plot(results, type = "heatmap")
+> ## End(Not run)
+> 
+> 
+> 
+> ### * <FOOTER>
+> ###
+> cleanEx()
+> options(digits = 7L)
+> base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
+Time elapsed:  1.754 0.155 2.562 0.013 0.019 
+> grDevices::dev.off()
+null device 
+          1 
+> ###
+> ### Local variables: ***
+> ### mode: outline-minor ***
+> ### outline-regexp: "\\(> \\)?### [*]+" ***
+> ### End: ***
+> quit('no')
