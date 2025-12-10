@@ -51,7 +51,7 @@ force_convergence <- function(model, max_tries = 20, tolerance = 1.0) {
 #' and extraction of BLUEs and heritability metrics.
 #'
 #' @param data A data frame containing the trial data.
-#' @param traits A character vector of trait column names to analyze.
+#' @param trait Character. Column name of the trait to analyze.
 #' @param study_col Character. Column name for the study/environment identifier.
 #' @param genotype_col Character. Column name for the genotype identifier.
 #' @param row_col Character. Column name for the row coordinate.
@@ -59,6 +59,7 @@ force_convergence <- function(model, max_tries = 20, tolerance = 1.0) {
 #' @param rep_col Character. Column name for the replicate identifier.
 #' @param block_col Character. Column name for the block identifier.
 #' @param spatial_models A named list of residual formulas to test. Default tests independent and AR1xAR1 errors.
+#' @param extra_random Character. Additional random terms to add to the model formulation (specifically for AR1xAR1 model). Default is NULL.
 #' @param plot_residuals Logical. Whether to generate residual plots (currently returned as data/objects, not saved to disk).
 #'
 #' @return A list containing:
@@ -71,7 +72,7 @@ force_convergence <- function(model, max_tries = 20, tolerance = 1.0) {
 #' @importFrom stats as.formula update predict var cor
 #' @export
 analyze_single_trial <- function(data,
-                                 traits,
+                                 trait,
                                  study_col = "studyName",
                                  genotype_col = "germplasmName",
                                  row_col = "rowNumber",
@@ -82,20 +83,21 @@ analyze_single_trial <- function(data,
                                      "Independent" = "~id(col_f):id(row_f)",
                                      "AR1xAR1" = "~ar1(col_f):ar1(row_f)"
                                  ),
+                                 extra_random = NULL,
                                  plot_residuals = FALSE) {
     if (!requireNamespace("asreml", quietly = TRUE)) {
         stop("The 'asreml' package is required for this function.")
     }
 
     # Ensure required columns exist
-    req_cols <- c(study_col, genotype_col, row_col, col_col, rep_col, block_col, traits)
+    req_cols <- c(study_col, genotype_col, row_col, col_col, rep_col, block_col, trait)
     missing_cols <- req_cols[!req_cols %in% colnames(data)]
     if (length(missing_cols) > 0) {
         stop(paste("Missing columns in data:", paste(missing_cols, collapse = ", ")))
     }
 
-    # Standardize -9 to NA if present in traits
-    for (trt in traits) {
+    # Standardize -9 to NA if present in trait
+    for (trt in trait) {
         if (any(data[[trt]] == -9, na.rm = TRUE)) {
             data[[trt]][data[[trt]] == -9] <- NA
         }
@@ -135,8 +137,8 @@ analyze_single_trial <- function(data,
 
         # Convert design variables to factors
         # We create internal names to avoid conflicts in formula
-        spatial_data$row_f <- factor(spatial_data[[row_col]])
-        spatial_data$col_f <- factor(spatial_data[[col_col]])
+        spatial_data$row_f <- factor(spatial_data[[row_col]], levels = seq(r_min, r_max))
+        spatial_data$col_f <- factor(spatial_data[[col_col]], levels = seq(c_min, c_max))
         spatial_data$geno_f <- factor(spatial_data[[genotype_col]])
         spatial_data$rep_f <- factor(spatial_data[[rep_col]])
         spatial_data$blk_f <- factor(spatial_data[[block_col]])
@@ -144,7 +146,7 @@ analyze_single_trial <- function(data,
 
         spatial_data <- spatial_data[order(spatial_data[[row_col]], spatial_data[[col_col]]), ]
 
-        for (trt in traits) {
+        for (trt in trait) {
             # message(paste("  Trait:", trt))
 
             # Skip if trait is entirely missing or has 0 variance
@@ -177,6 +179,11 @@ analyze_single_trial <- function(data,
                 fixed_form <- as.formula(paste(trt, "~ 1"))
                 random_form <- ~ geno_f + blk_f
                 resid_form <- as.formula(res_formula_str)
+
+                # Add extra random terms if AR1 model and specified
+                if (mod_name == "AR1xAR1" && !is.null(extra_random)) {
+                    random_form <- update(random_form, paste("~ . +", extra_random))
+                }
 
                 # Fit model
                 # Using try() to catch ASReml errors
@@ -243,6 +250,10 @@ analyze_single_trial <- function(data,
                 # Fixed Genotype Model
                 fixed_form_final <- as.formula(paste(trt, "~ 1 + geno_f"))
                 random_form_final <- ~blk_f
+
+                if (best_res_name == "AR1xAR1" && !is.null(extra_random)) {
+                    random_form_final <- update(random_form_final, paste("~ . +", extra_random))
+                }
 
                 final_mod <- try(
                     asreml::asreml(
