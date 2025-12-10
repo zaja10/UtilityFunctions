@@ -119,7 +119,15 @@ analyze_single_trial <- function(data,
         # We use tidyr::expand to generate all combinations and join back
         # Note: We need to handle potential duplicates if multiple records exist per coord (shouldn't for single trial yield, but good to be safe)
 
-        # Ensure coordinates are integers for range calculation
+        # Ensure coordinates are numeric/integers for range calculation
+        # If they are factors, convert safely using as.character first
+        if (is.factor(sub_data[[row_col]])) {
+            sub_data[[row_col]] <- as.numeric(as.character(sub_data[[row_col]]))
+        }
+        if (is.factor(sub_data[[col_col]])) {
+            sub_data[[col_col]] <- as.numeric(as.character(sub_data[[col_col]]))
+        }
+
         r_min <- min(sub_data[[row_col]], na.rm = TRUE)
         r_max <- max(sub_data[[row_col]], na.rm = TRUE)
         c_min <- min(sub_data[[col_col]], na.rm = TRUE)
