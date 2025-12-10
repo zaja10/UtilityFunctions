@@ -135,4 +135,5 @@ Namespace in Imports field not imported from: ‘reshape2’
   All declared Imports should be used.
 * checking S3 generic/method consistency ... OK
 * checking replacement functions ... OK
-* checking foreign function calls ...
+* checking foreign function calls ... OK
+* checking R code for possible problems ...
