@@ -8,108 +8,108 @@
 #' @name met_diagnostics
 NULL
 
-#' Pad Trial Layout for Spatial Analysis
+#' Pad Trial Layout (Robust Integer Merge)
 #'
 #' Ensures a trial dataset has a complete grid of Row x Column positions by padding
-#' missing coordinates with NA values. Useful for checking experimental design integrity.
+#' missing coordinates with NA values. Uses strict integer matching to prevent duplication.
 #'
 #' @param data A data.frame containing the trial data.
 #' @param row String. Column name for Row positions (Default: "Row").
 #' @param col String. Column name for Column positions (Default: "Column").
 #' @param group String. Column name for Trial/Environment to pad independently.
-#'        If NULL (default), treats input as a single trial.
 #'
 #' @return A data.frame with the original data plus rows for missing physical positions.
 #' @export
 pad_trial_layout <- function(data, row = "Row", col = "Column", group = NULL) {
-    # Recursive handling for groups
+    # 1. Recursive handling for groups
     if (!is.null(group)) {
         if (!group %in% names(data)) stop(paste("Group column", group, "not found."))
 
-        # Split, apply, combine
-        # Use split instead of dplyr group_by to stick to base R
-        out_list <- split(data, data[[group]])
+        # Filter NA groups
+        valid_data <- data[!is.na(data[[group]]), ]
 
+        # Split and apply
+        out_list <- split(valid_data, valid_data[[group]])
         padded_list <- lapply(names(out_list), function(grp_name) {
             sub_df <- out_list[[grp_name]]
+            # Recurse for this specific trial
             padded <- pad_trial_layout(sub_df, row = row, col = col, group = NULL)
 
-            # Fill the group column for the new NA rows
-            # The split name (grp_name) is a character, but the original column might be numeric/factor.
-            # Get the actual value from the sub_df to preserve type.
-            val <- unique(sub_df[[group]])[1]
+            # Restore group label
+            val <- sub_df[[group]][1]
             padded[[group]] <- val
             return(padded)
         })
 
-        # Bind rows
         out_df <- do.call(rbind, padded_list)
-        rownames(out_df) <- NULL # Clean rownames
+        rownames(out_df) <- NULL
         return(out_df)
     }
 
-    if (!all(c(row, col) %in% names(data))) {
-        warning("Row or Column columns not found. Returning original data.")
+    # 2. Base Case: Pad Single Experiment
+    # Create SAFE integer coordinates for merging
+    # This strips away factor levels, whitespace, etc.
+    data$..Row_Int.. <- tryCatch(as.integer(as.character(data[[row]])), warning = function(w) NA)
+    data$..Col_Int.. <- tryCatch(as.integer(as.character(data[[col]])), warning = function(w) NA)
+
+    # If conversion fails (e.g. Row is "Plot1"), abort padding to be safe
+    if (all(is.na(data$..Row_Int..)) || all(is.na(data$..Col_Int..))) {
+        warning(paste("Could not convert", row, "or", col, "to integers. Skipping padding."))
+        data$..Row_Int.. <- NULL
+        data$..Col_Int.. <- NULL
         return(data)
     }
 
-    # Ensure coordinates are numeric
-    r_vals <- tryCatch(as.numeric(as.character(data[[row]])), warning = function(w) NULL)
-    c_vals <- tryCatch(as.numeric(as.character(data[[col]])), warning = function(w) NULL)
+    # 3. Create Grid based on Integers
+    min_r <- min(data$..Row_Int.., na.rm = TRUE)
+    max_r <- max(data$..Row_Int.., na.rm = TRUE)
+    min_c <- min(data$..Col_Int.., na.rm = TRUE)
+    max_c <- max(data$..Col_Int.., na.rm = TRUE)
 
-    if (is.null(r_vals) || is.null(c_vals)) {
-        warning("Row/Column coordinates must be coercible to numeric. Returning original.")
-        return(data)
-    }
-
-    min_r <- min(r_vals, na.rm = TRUE)
-    max_r <- max(r_vals, na.rm = TRUE)
-    min_c <- min(c_vals, na.rm = TRUE)
-    max_c <- max(c_vals, na.rm = TRUE)
-
-    # Create complete grid
     grid <- expand.grid(
-        Row_Temp = seq(min_r, max_r),
-        Col_Temp = seq(min_c, max_c)
+        ..Row_Int.. = seq(min_r, max_r),
+        ..Col_Int.. = seq(min_c, max_c)
     )
-    names(grid) <- c(row, col)
 
-    # Ensure types match for join
-    grid[[row]] <- as(grid[[row]], class(data[[row]]))
-    grid[[col]] <- as(grid[[col]], class(data[[col]]))
-
-    # Flag original data
+    # 4. Strict Merge on Integers
+    # all=TRUE keeps grid rows (padding) AND data rows
     data$..present.. <- TRUE
+    out <- merge(grid, data, by = c("..Row_Int..", "..Col_Int.."), all = TRUE)
 
-    # Merge
-    # Use base R merge (equivalent to left_join on the grid)
-    out <- merge(grid, data, by = c(row, col), all.x = TRUE)
-
-    # Identify padded rows
+    # 5. Post-Processing
     padded_rows <- is.na(out$..present..)
 
-    # Fill constant columns for padded rows
+    # If the original columns (Row/Column) are NA in the new rows, fill them
+    # This puts the factor labels back (e.g., Integer 1 becomes Factor "1")
     if (any(padded_rows)) {
-        for (nm in names(out)) {
-            if (nm %in% c(row, col, "..present..")) next
+        out[padded_rows, row] <- as.character(out[padded_rows, "..Row_Int.."])
+        out[padded_rows, col] <- as.character(out[padded_rows, "..Col_Int.."])
 
-            # Check if column is constant in the ORIGINAL data (present rows)
-            # Use out[!padded_rows, nm] to access the data corresponding to original rows
+        # Convert back to factor if original was factor
+        if (is.factor(data[[row]])) out[[row]] <- as.factor(out[[row]])
+        if (is.factor(data[[col]])) out[[col]] <- as.factor(out[[col]])
+
+        # Fill other constant columns (like Location, Year)
+        for (nm in names(out)) {
+            if (nm %in% c(row, col, "..Row_Int..", "..Col_Int..", "..present..")) next
+
             vals <- out[!padded_rows, nm]
-            u_vals <- unique(vals)
-            # Remove NA from unique check only if we allow NA as constant?
-            # Usually we want non-NA constant.
-            u_vals <- u_vals[!is.na(u_vals)]
+            u_vals <- unique(vals[!is.na(vals)])
 
             if (length(u_vals) == 1) {
-                # distinct value found, fill it for padded rows
                 out[padded_rows, nm] <- u_vals[1]
             }
         }
     }
 
-    # Remove flag
+    # Remove temporary columns
+    out$..Row_Int.. <- NULL
+    out$..Col_Int.. <- NULL
     out$..present.. <- NULL
+
+    # Sort
+    out <- out[order(out[[col]], out[[row]]), ]
+
     return(out)
 }
 
@@ -513,4 +513,152 @@ convert_buac_to_tha <- function(yield, crop = "wheat", lbs_per_bu = NULL) {
 
     factor <- weight * 0.00112085116
     return(yield * factor)
+}
+
+#' Check Experimental Design Factors by Study
+#'
+#' Scans a MET dataset to determine which design terms (Row, Column, Block, Replicate)
+#' are valid for inclusion in a model for each specific study.
+#'
+#' @param data The dataframe containing the MET data.
+#' @param study_col String. Name of the column defining the Study/Experiment (default "studyName").
+#' @param row_col String. Name of the Row column (default "rowNumber").
+#' @param col_col String. Name of the Column column (default "colNumber").
+#' @param block_col String. Name of the Block column (default "blockNumber").
+#' @param rep_col String. Name of the Replicate column (default "replicate").
+#'
+#' @return A dataframe summarizing which terms are available for each study.
+#' @export
+check_design_terms <- function(data,
+                               study_col = "studyName",
+                               row_col = "rowNumber",
+                               col_col = "colNumber",
+                               block_col = "blockNumber",
+                               rep_col = "replicate") {
+    # Ensure the study column exists
+    if (!study_col %in% names(data)) {
+        stop(paste("Study column", study_col, "not found in dataframe."))
+    }
+
+    # Split data by Study
+    # usage of factor ensures we don't drop empty levels if they exist,
+    # but here we usually only care about present data.
+    study_list <- split(data, data[[study_col]])
+
+    # Helper function to check if a column has > 1 unique value (ignoring NAs)
+    has_var <- function(df, col_name) {
+        if (!col_name %in% names(df)) {
+            return(FALSE)
+        }
+
+        vals <- df[[col_name]]
+        vals <- vals[!is.na(vals)]
+
+        # Needs at least 2 levels to be a valid factor in a model
+        # (e.g., if Block is always "1", you can't fit it as a random effect)
+        return(length(unique(vals)) > 1)
+    }
+
+    # Iterate through studies
+    results <- lapply(names(study_list), function(nm) {
+        sub_df <- study_list[[nm]]
+
+        data.frame(
+            Study = nm,
+            Has_Row = has_var(sub_df, row_col),
+            Has_Col = has_var(sub_df, col_col),
+            Has_Block = has_var(sub_df, block_col),
+            Has_Rep = has_var(sub_df, rep_col),
+            stringsAsFactors = FALSE
+        )
+    })
+
+    # Combine results
+    out_df <- do.call(rbind, results)
+    rownames(out_df) <- NULL
+
+    return(out_df)
+}
+
+
+#' Find Missing Row/Column Combinations in MET Data
+#'
+#' Identifies missing plots required to complete a rectangular grid for spatial analysis.
+#' Useful for diagnosing ASREml "residual model implies X" errors.
+#'
+#' @param data Dataframe containing the trial data.
+#' @param experiment String. Column name for the Experiment/Trial ID.
+#' @param row String. Column name for Row.
+#' @param col String. Column name for Column.
+#'
+#' @return A dataframe listing the Experiment, Row, and Column of missing plots.
+#' @export
+find_missing_plots <- function(data, experiment = "Experiment", row = "Row", col = "Column") {
+    if (!all(c(experiment, row, col) %in% names(data))) {
+        stop("Specified columns not found in dataframe.")
+    }
+
+    # Ensure strict types for merging
+    data[[experiment]] <- as.factor(data[[experiment]])
+
+    # Iterate through each experiment
+    missing_list <- lapply(levels(data[[experiment]]), function(exp_id) {
+        # Subset data for this experiment
+        sub_df <- data[data[[experiment]] == exp_id, ]
+
+        # Skip empty levels
+        if (nrow(sub_df) == 0) {
+            return(NULL)
+        }
+
+        # Get actual numeric coordinates (handle factors safely)
+        r_vals <- as.numeric(as.character(sub_df[[row]]))
+        c_vals <- as.numeric(as.character(sub_df[[col]]))
+
+        # 1. Define the Expected Grid (Min to Max)
+        # ASREml assumes the grid is defined by the range of the factors
+        min_r <- min(r_vals, na.rm = TRUE)
+        max_r <- max(r_vals, na.rm = TRUE)
+        min_c <- min(c_vals, na.rm = TRUE)
+        max_c <- max(c_vals, na.rm = TRUE)
+
+        expected_grid <- expand.grid(
+            Row_Num = seq(min_r, max_r),
+            Col_Num = seq(min_c, max_c)
+        )
+
+        # Create a composite key "Row_Col" for easy comparison
+        # We use the numeric values to match the grid
+        sub_df$key <- paste(r_vals, c_vals, sep = "_")
+        expected_grid$key <- paste(expected_grid$Row_Num, expected_grid$Col_Num, sep = "_")
+
+        # 2. Find Missing Keys
+        missing_keys <- setdiff(expected_grid$key, sub_df$key)
+
+        if (length(missing_keys) > 0) {
+            # Split key back into Row/Col
+            coords <- do.call(rbind, strsplit(missing_keys, "_"))
+
+            return(data.frame(
+                Experiment = exp_id,
+                Row = as.numeric(coords[, 1]),
+                Column = as.numeric(coords[, 2]),
+                Status = "MISSING",
+                stringsAsFactors = FALSE
+            ))
+        } else {
+            return(NULL) # No missing plots
+        }
+    })
+
+    # Combine results
+    out_df <- do.call(rbind, missing_list)
+
+    if (is.null(out_df)) {
+        message("Success: All experiments have complete rectangular grids.")
+        return(invisible(NULL))
+    } else {
+        message(paste("Found", nrow(out_df), "missing plots across", length(unique(out_df$Experiment)), "experiments."))
+        return(out_df)
+    }
 }

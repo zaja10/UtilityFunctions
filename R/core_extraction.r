@@ -215,8 +215,27 @@ fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
   G_est <- (lam_ord %*% t(lam_ord)) + psi_ord
   C_est <- tryCatch(cov2cor(G_est), error = function(e) G_est)
 
-  vaf_pct <- ifelse(diag(G_est) > 1e-8, (diag(lam_ord %*% t(lam_ord)) / diag(G_est)) * 100, 0)
-  vaf_df <- data.frame(Site = common_sites, VAF = vaf_pct)
+  # Calculate VAF per Factor
+  G_diag <- diag(G_est)
+  vaf_list <- list(Site = common_sites)
+
+  # Total VAF (Legacy calculation)
+  # pct <- (diag(lam_ord %*% t(lam_ord)) / G_diag) * 100
+  # vaf_list$Total_VAF_Old <- pct # Optional, but let's stick to summation for consistency
+
+  total_vaf <- numeric(length(common_sites))
+
+  for (i in 1:k) {
+    # Variance explained by Factor i = lambda_i^2
+    v_fac <- lam_ord[, i]^2
+    pct_fac <- ifelse(G_diag > 1e-8, (v_fac / G_diag) * 100, 0)
+
+    vaf_list[[paste0("VAF_Fac", i)]] <- round(pct_fac, 2)
+    total_vaf <- total_vaf + pct_fac
+  }
+
+  vaf_list$Total_VAF <- round(total_vaf, 2)
+  vaf_df <- as.data.frame(vaf_list)
 
   # 8. FAST INDICES -----------------------------------------------------------
   fast_df <- NULL
@@ -251,7 +270,7 @@ print.fa_asreml <- function(x, ...) {
   cor_mat <- x$matrices$Cor
   diag(cor_mat) <- NA
   mean_r <- mean(cor_mat, na.rm = TRUE)
-  mean_vaf <- mean(x$var_comp$vaf$VAF, na.rm = TRUE)
+  mean_vaf <- mean(x$var_comp$vaf$Total_VAF, na.rm = TRUE)
 
   cat("\n=== FACTOR ANALYTIC REPORT (ASRemlFAST) ===\n")
   cat(sprintf(" Model Type: %s\n", x$meta$type))
@@ -274,17 +293,17 @@ print.fa_asreml <- function(x, ...) {
 #' @export
 summary.fa_asreml <- function(object, ...) {
   loadings <- object$loadings$rotated
-  G_diag <- diag(object$matrices$G)
-  k <- object$meta$k
 
-  # Build Site Stats with breakdown per factor
-  site_stats <- data.frame(Site = rownames(loadings))
-  for (i in 1:k) {
-    vaf_k <- (loadings[, i]^2 / G_diag) * 100
-    site_stats[[paste0("VAF_Fac", i)]] <- round(vaf_k, 1)
-  }
-  site_stats$Total_VAF <- rowSums(site_stats[, 2:(k + 1)])
-  site_stats$Fac1_Load <- round(loadings[, 1], 3)
+  # Use pre-calculated VAF from object
+  vaf_df <- object$var_comp$vaf
+
+  # Merge with loadings (optional, for convenience)
+  # Let's clean up vaf_df for display if needed or just return it as site_stats
+
+  site_stats <- vaf_df
+  site_stats$Fac1_Load <- round(loadings[as.character(site_stats$Site), 1], 3)
+
+  # Ensure Total_VAF is present (it is from core)
 
   gen_stats <- NULL
   if (!is.null(object$fast)) {
