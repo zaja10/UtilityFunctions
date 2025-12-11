@@ -97,6 +97,7 @@ analyze_single_trial <- function(data,
     }
 
     # Standardize -9 to NA if present in trait
+    # We do this early to ensure any downstream conversions or checks work on clean data
     for (trt in trait) {
         if (any(data[[trt]] == -9, na.rm = TRUE)) {
             data[[trt]][data[[trt]] == -9] <- NA
@@ -114,6 +115,10 @@ analyze_single_trial <- function(data,
         # 1. Prepare Data for Study
         sub_data <- data[data[[study_col]] == std, ]
 
+        # Check if study has data
+        if (nrow(sub_data) == 0) next
+
+
         # Create complete spatial grid
         # ASReml spatial analysis requires a complete grid (row x col)
         # We use tidyr::expand to generate all combinations and join back
@@ -126,6 +131,12 @@ analyze_single_trial <- function(data,
         }
         if (is.factor(sub_data[[col_col]])) {
             sub_data[[col_col]] <- as.numeric(as.character(sub_data[[col_col]]))
+        }
+
+        # Check for valid coordinates before range calculation
+        if (all(is.na(sub_data[[row_col]])) || all(is.na(sub_data[[col_col]]))) {
+            warning(paste("Skipping study", std, ": All row or column coordinates are missing."))
+            next
         }
 
         r_min <- min(sub_data[[row_col]], na.rm = TRUE)
