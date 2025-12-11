@@ -78,9 +78,38 @@ pad_trial_layout <- function(data, row = "Row", col = "Column", group = NULL) {
     grid[[row]] <- as(grid[[row]], class(data[[row]]))
     grid[[col]] <- as(grid[[col]], class(data[[col]]))
 
+    # Flag original data
+    data$..present.. <- TRUE
+
     # Merge
     # Use base R merge (equivalent to left_join on the grid)
     out <- merge(grid, data, by = c(row, col), all.x = TRUE)
+
+    # Identify padded rows
+    padded_rows <- is.na(out$..present..)
+
+    # Fill constant columns for padded rows
+    if (any(padded_rows)) {
+        for (nm in names(out)) {
+            if (nm %in% c(row, col, "..present..")) next
+
+            # Check if column is constant in the ORIGINAL data (present rows)
+            # Use out[!padded_rows, nm] to access the data corresponding to original rows
+            vals <- out[!padded_rows, nm]
+            u_vals <- unique(vals)
+            # Remove NA from unique check only if we allow NA as constant?
+            # Usually we want non-NA constant.
+            u_vals <- u_vals[!is.na(u_vals)]
+
+            if (length(u_vals) == 1) {
+                # distinct value found, fill it for padded rows
+                out[padded_rows, nm] <- u_vals[1]
+            }
+        }
+    }
+
+    # Remove flag
+    out$..present.. <- NULL
     return(out)
 }
 
