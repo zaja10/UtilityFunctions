@@ -15,6 +15,7 @@ Imports:
     tibble,
     reshape2,
     MASS,
+    Matrix,
     Rcpp
 LinkingTo: 
     Rcpp
