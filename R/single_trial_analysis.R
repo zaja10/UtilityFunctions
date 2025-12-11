@@ -1,3 +1,49 @@
+#' Force Model Convergence
+#'
+#' Iteratively updates an ASReml model until the variance components stabilize.
+#'
+#' @param model An ASReml model object.
+#' @param max_tries Integer. Maximum number of iterations to attempt convergence. Default is 20.
+#' @param tolerance Numeric. Percentage change threshold for variance components to consider converged. Default is 1.0.
+#'
+#' @return A converged ASReml model object, or the last iteration if convergence failed.
+#' @export
+force_convergence <- function(model, max_tries = 20, tolerance = 1.0) {
+    if (!requireNamespace("asreml", quietly = TRUE)) {
+        stop("The 'asreml' package is required for this function.")
+    }
+
+    try_count <- 1
+    converged <- FALSE
+
+    # Check initial status
+    if (!is.null(summary(model)$varcomp)) {
+        pct_chg <- summary(model)$varcomp[, "%ch"]
+        if (!any(pct_chg > tolerance, na.rm = TRUE)) {
+            converged <- TRUE
+        }
+    }
+
+    while (!converged && try_count < max_tries) {
+        try_count <- try_count + 1
+        # suppress warnings during update loop to avoid clutter
+        model <- suppressWarnings(try(update(model), silent = TRUE))
+
+        if (inherits(model, "try-error")) {
+            warning("Model update failed during convergence loop.")
+            break
+        }
+
+        pct_chg <- summary(model)$varcomp[, "%ch"]
+
+        if (!any(pct_chg > tolerance, na.rm = TRUE)) {
+            converged <- TRUE
+        }
+    }
+
+    return(model)
+}
+
 #' Analyze Single Variate Single Trial
 #'
 #' @export
