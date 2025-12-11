@@ -1,318 +1,224 @@
-#' Force Model Convergence
-#'
-#' Iteratively updates an ASReml model until the variance components stabilize.
-#'
-#' @param model An ASReml model object.
-#' @param max_tries Integer. Maximum number of iterations to attempt convergence. Default is 20.
-#' @param tolerance Numeric. Percentage change threshold for variance components to consider converged. Default is 1.0.
-#'
-#' @return A converged ASReml model object, or the last iteration if convergence failed.
-#' @export
-force_convergence <- function(model, max_tries = 20, tolerance = 1.0) {
-    if (!requireNamespace("asreml", quietly = TRUE)) {
-        stop("The 'asreml' package is required for this function.")
-    }
-
-    try_count <- 1
-    converged <- FALSE
-
-    # Check initial status
-    if (!is.null(summary(model)$varcomp)) {
-        pct_chg <- summary(model)$varcomp[, "%ch"]
-        if (!any(pct_chg > tolerance, na.rm = TRUE)) {
-            converged <- TRUE
-        }
-    }
-
-    while (!converged && try_count < max_tries) {
-        try_count <- try_count + 1
-        # suppress warnings during update loop to avoid clutter
-        model <- suppressWarnings(try(update(model), silent = TRUE))
-
-        if (inherits(model, "try-error")) {
-            warning("Model update failed during convergence loop.")
-            break
-        }
-
-        pct_chg <- summary(model)$varcomp[, "%ch"]
-
-        if (!any(pct_chg > tolerance, na.rm = TRUE)) {
-            converged <- TRUE
-        }
-    }
-
-    return(model)
-}
-
 #' Analyze Single Variate Single Trial
 #'
-#' Performs single trial analysis for multiple traits across multiple studies/environments.
-#' Automates data cleaning, spatial grid completion, spatial model selection (BIC),
-#' and extraction of BLUEs and heritability metrics.
-#'
-#' @param data A data frame containing the trial data.
-#' @param traits Character. Column name of the trait to analyze.
-#' @param study_col Character. Column name for the study/environment identifier.
-#' @param genotype_col Character. Column name for the genotype identifier.
-#' @param row_col Character. Column name for the row coordinate.
-#' @param col_col Character. Column name for the column coordinate.
-#' @param rep_col Character. Column name for the replicate identifier.
-#' @param block_col Character. Column name for the block identifier.
-#' @param spatial_models A named list of residual formulas to test. Default tests independent and AR1xAR1 errors.
-#' @param extra_random Character. Additional random terms to add to the model formulation (specifically for AR1xAR1 model). Default is NULL.
-#' @param plot_residuals Logical. Whether to generate residual plots (currently returned as data/objects, not saved to disk).
-#'
-#' @return A list containing:
-#' \item{blues}{Data frame of Best Linear Unbiased Estimators with columns: genotype, trait, study, predicted.value, std.error, reliability.}
-#' \item{model_stats}{Data frame of model statistics including BIC, selected spatial model, and convergence status.}
-#' \item{correlations}{Phenotypic correlation matrix of BLUEs (if applicable).}
-#'
-#' @importFrom dplyr filter mutate select arrange group_by summarize bind_rows everything
-#' @importFrom tidyr expand replace_na pivot_wider
-#' @importFrom stats as.formula update predict var cor
 #' @export
 analyze_single_trial <- function(data,
-                                 traits, # Renamed from 'trait' to match documentation
-                                 study_col = "studyName",
-                                 genotype_col = "germplasmName",
-                                 row_col = "rowNumber",
-                                 col_col = "colNumber",
-                                 rep_col = "replicate",
-                                 block_col = "blockNumber",
-                                 spatial_models = list(
-                                     "Independent" = "~id(col_f):id(row_f)",
-                                     "AR1xAR1" = "~ar1(col_f):ar1(row_f)"
-                                 ),
-                                 extra_random = NULL,
-                                 plot_residuals = FALSE) {
+                                 trait = "Yield",
+                                 genotype = "germplasmName",
+                                 env = "studyName",
+                                 row = "rowNumber",
+                                 col = "colNumber",
+                                 block = "blockNumber",
+                                 rep = "replicate") {
     if (!requireNamespace("asreml", quietly = TRUE)) {
         stop("The 'asreml' package is required for this function.")
     }
 
-    # Ensure required columns exist
-    req_cols <- c(study_col, genotype_col, row_col, col_col, rep_col, block_col, traits)
-    missing_cols <- req_cols[!req_cols %in% colnames(data)]
-    if (length(missing_cols) > 0) {
-        stop(paste("Missing columns in data:", paste(missing_cols, collapse = ", ")))
-    }
+    cat(paste0("--- Processing Trait: ", trait, " ---\n"))
 
-    # Standardize -9 to NA if present in trait
-    # We do this early to ensure any downstream conversions or checks work on clean data
-    for (trt in traits) {
-        if (any(data[[trt]] == -9, na.rm = TRUE)) {
-            data[[trt]][data[[trt]] == -9] <- NA
-        }
-    }
+    # 1. Setup Data
+    df <- as.data.frame(data)
 
-    results_blues <- list()
-    results_stats <- list()
+    # Check if trait/env exist
+    if (!trait %in% colnames(df)) stop(paste("Trait", trait, "not found."))
+    if (!env %in% colnames(df)) stop(paste("Env col", env, "not found."))
 
-    studies <- unique(as.character(data[[study_col]]))
+    df <- df[!is.na(df[[trait]]), ] # Remove missing trait data
 
-    for (std in studies) {
-        sub_data <- data[data[[study_col]] == std, ]
-        if (nrow(sub_data) == 0) next
+    # Ensure factors
+    # We use get/assign or just [[ formatting
+    df[[genotype]] <- as.factor(df[[genotype]])
+    df[[env]] <- as.factor(df[[env]])
+    df[[block]] <- as.factor(df[[block]])
+    df[[row]] <- as.factor(df[[row]])
+    df[[col]] <- as.factor(df[[col]])
+    df[[rep]] <- as.factor(df[[rep]])
 
-        # --- Spatial Grid Preparation ---
-        if (is.factor(sub_data[[row_col]])) sub_data[[row_col]] <- as.numeric(as.character(sub_data[[row_col]]))
-        if (is.factor(sub_data[[col_col]])) sub_data[[col_col]] <- as.numeric(as.character(sub_data[[col_col]]))
+    # Store for binding later
+    all_studies_list <- list()
 
-        # Check for valid coordinates before range calculation
-        if (all(is.na(sub_data[[row_col]])) || all(is.na(sub_data[[col_col]]))) {
-            warning(paste("Skipping study", std, ": All row or column coordinates are missing."))
+    # Unique Environments
+    studies <- unique(as.character(df[[env]]))
+
+    for (i in 1:length(studies)) {
+        current_study <- studies[i]
+        cat(paste0("  > Analyzing Study: ", current_study, "\n"))
+
+        # Subset and Drop Levels
+        sub <- droplevels(df[df[[env]] == current_study, ])
+
+        # Check if data exists for study
+        if (nrow(sub) == 0) next
+
+        # --- 2. Spatial Grid Padding (Matches your script logic) ---
+        r_vals <- as.numeric(as.character(sub[[row]]))
+        c_vals <- as.numeric(as.character(sub[[col]]))
+
+        if (length(r_vals) == 0 || length(c_vals) == 0) {
+            warning(paste("No coordinates for study", current_study))
             next
         }
 
-        r_min <- min(sub_data[[row_col]], na.rm = TRUE)
-        r_max <- max(sub_data[[row_col]], na.rm = TRUE)
-        c_min <- min(sub_data[[col_col]], na.rm = TRUE)
-        c_max <- max(sub_data[[col_col]], na.rm = TRUE)
+        r_range <- min(r_vals, na.rm = TRUE):max(r_vals, na.rm = TRUE)
+        c_range <- min(c_vals, na.rm = TRUE):max(c_vals, na.rm = TRUE)
 
-        grid_df <- expand.grid(rowNumber_temp = seq(r_min, r_max), colNumber_temp = seq(c_min, c_max))
-        colnames(grid_df) <- c(row_col, col_col)
+        grid <- expand.grid(rowNumber = factor(r_range), colNumber = factor(c_range))
+        colnames(grid) <- c(row, col)
 
-        spatial_data <- merge(grid_df, sub_data, by = c(row_col, col_col), all.x = TRUE)
+        # Merge and Sort (Order is critical for AR1)
+        sub <- merge(grid, sub, by = c(row, col), all.x = TRUE)
+        sub <- sub[order(sub[[row]]), ]
+        sub <- sub[order(sub[[col]]), ] # Match script order: Row then Col
 
-        # Factor conversion
-        spatial_data$row_f <- factor(spatial_data[[row_col]], levels = seq(r_min, r_max))
-        spatial_data$col_f <- factor(spatial_data[[col_col]], levels = seq(c_min, c_max))
-        spatial_data$geno_f <- factor(spatial_data[[genotype_col]])
-        spatial_data$rep_f <- factor(spatial_data[[rep_col]])
-        spatial_data$blk_f <- factor(spatial_data[[block_col]])
-
-        # Sort is required for AR1
-        spatial_data <- spatial_data[order(spatial_data[[row_col]], spatial_data[[col_col]]), ]
-
-        for (trt in traits) {
-            # Skip if trait is entirely missing or has 0 variance
-            if (all(is.na(spatial_data[[trt]])) || var(spatial_data[[trt]], na.rm = TRUE) == 0) {
-                warning(paste("Skipping trait", trt, "in study", std, "due to no variance or all NA."))
-                next
-            }
-
-            model_comp <- data.frame(
-                resid_model = names(spatial_models),
-                BIC = NA,
-                converged = FALSE,
-                mean_reliability = 0,
-                stringsAsFactors = FALSE
+        # Check Variance
+        if (var(sub[[trait]], na.rm = TRUE) > 0) {
+            # Define Residual Models to Test (Matches your script)
+            # We construct the formula strings dynamically
+            resids_to_test <- c(
+                paste0("id(", col, "):id(", row, ")"),
+                paste0("ar1(", col, "):ar1(", row, ")")
             )
 
-            best_model_obj <- NULL
-            best_res_name <- NULL
-            min_bic <- Inf
+            # Storage for Model Selection Loop
+            loop_reliabilities <- c()
+            loop_bics <- c()
+            loop_conv <- c()
 
-            # --- Stage 1: Random Genotype (Variance Comp & Selection) ---
-            for (mod_name in names(spatial_models)) {
-                res_formula_str <- spatial_models[[mod_name]]
-                fixed_form <- as.formula(paste(trt, "~ 1"))
-                random_form <- ~ geno_f + blk_f
-                resid_form <- as.formula(res_formula_str)
+            # Formulas (Matches your script)
+            fixed_form <- as.formula(paste(trait, "~ 1"))
+            random_form <- as.formula(paste("~", genotype, "+", block))
 
-                if (mod_name == "AR1xAR1" && !is.null(extra_random)) {
-                    random_form <- update(random_form, paste("~ . +", extra_random))
-                }
+            # --- 3. MODEL SELECTION LOOP (ROBUST) ---
+            for (k in 1:length(resids_to_test)) {
+                resid_form <- as.formula(paste("~", resids_to_test[k]))
 
-                mod_fit <- try(
-                    asreml::asreml(
-                        fixed = fixed_form,
-                        random = random_form,
-                        residual = resid_form,
-                        data = spatial_data,
-                        na.action = asreml::na.method(y = "include", x = "include"),
-                        trace = FALSE
-                    ),
-                    silent = TRUE
-                )
+                # 1. Initial Fit with higher maxit
+                # Note: asreml namespace call
+                amod1 <- try(asreml::asreml(
+                    fixed = fixed_form,
+                    random = random_form,
+                    residual = resid_form,
+                    data = sub,
+                    na.action = asreml::na.method(x = "include", y = "include"),
+                    # INCREASED MAXIT HERE
+                    maxit = 50,
+                    trace = FALSE, workspace = "4gb"
+                ), silent = TRUE)
 
-                if (!inherits(mod_fit, "try-error")) {
-                    mod_fit <- try(force_convergence(mod_fit), silent = TRUE)
-
-                    if (!inherits(mod_fit, "try-error")) {
-                        summ <- summary(mod_fit)
-                        # Fix: Use asreml::infoCriteria
-                        bic_val <- tryCatch(asreml::infoCriteria(mod_fit)$BIC, error = function(e) NA)
-
-                        # Reliability Calculation
-                        pvals <- try(predict(mod_fit, classify = "geno_f", ignore = c("(Intercept)"))$pvals, silent = TRUE)
-                        mean_rel <- 0
-
-                        if (!inherits(pvals, "try-error")) {
-                            pev <- pvals[["std.error"]]^2
-                            # Fix: Robust extraction of Genetic Variance
-                            # Look for 'geno_f' anywhere in the rowname to handle "geno_f!geno_f" etc.
-                            geno_row <- grep("geno_f", rownames(summ$varcomp), value = TRUE)[1]
-
-                            if (!is.na(geno_row)) {
-                                vg <- summ$varcomp[geno_row, "component"]
-                                if (!is.null(vg) && vg > 0) {
-                                    rels <- 1 - (pev / vg)
-                                    mean_rel <- mean(rels, na.rm = TRUE)
-                                }
-                            }
-                        }
-
-                        idx <- which(model_comp$resid_model == mod_name)
-                        model_comp$BIC[idx] <- bic_val
-                        model_comp$converged[idx] <- mod_fit$converge
-                        model_comp$mean_reliability[idx] <- mean_rel
-
-                        if (!is.na(bic_val) && bic_val < min_bic) {
-                            min_bic <- bic_val
-                            best_res_name <- mod_name
-                        }
+                # 2. Force Convergence Loop
+                # If it didn't crash, but didn't converge, update it up to 3 times
+                if (!inherits(amod1, "try-error")) {
+                    attempt <- 1
+                    while (!amod1$converge && attempt <= 3) {
+                        cat(paste0("    ... Updating model (Attempt ", attempt, ")\n"))
+                        amod1 <- try(update(amod1, maxit = 50), silent = TRUE)
+                        attempt <- attempt + 1
                     }
+
+                    # 3. Calculate Metrics (Only if it exists)
+                    if (!inherits(amod1, "try-error") && amod1$converge) {
+                        # Predict Random to get PEV (ignore Intercept)
+                        blups <- try(predict(amod1, classify = genotype, ignore = c("(Intercept)"))$pvals, silent = TRUE)
+
+                        if (!inherits(blups, "try-error")) {
+                            pev <- blups$std.error^2
+
+                            # Extract Vg safely
+                            vc <- summary(amod1)$varcomp
+                            if (genotype %in% rownames(vc)) {
+                                Vg <- vc[genotype, "component"]
+                            } else {
+                                Vg <- 0
+                            }
+
+                            # Reliability Calculation
+                            if (Vg > 1e-6) {
+                                rel_calc <- 1 - (pev / Vg)
+                                loop_reliabilities <- append(loop_reliabilities, mean(rel_calc, na.rm = TRUE))
+                            } else {
+                                loop_reliabilities <- append(loop_reliabilities, 0)
+                            }
+
+                            # Use asreml::infoCriteria
+                            bic_val <- tryCatch(asreml::infoCriteria(amod1)$BIC, error = function(e) 1e14)
+                            loop_bics <- append(loop_bics, bic_val)
+                            loop_conv <- append(loop_conv, TRUE)
+                        } else {
+                            # Prediction failed
+                            loop_reliabilities <- append(loop_reliabilities, 0)
+                            loop_bics <- append(loop_bics, 1e14)
+                            loop_conv <- append(loop_conv, FALSE)
+                        }
+                    } else {
+                        # Still failed after updates
+                        loop_reliabilities <- append(loop_reliabilities, 0)
+                        loop_bics <- append(loop_bics, 1e14)
+                        loop_conv <- append(loop_conv, FALSE) # Mark as NOT converged
+                    }
+                } else {
+                    # Crashed immediately
+                    loop_reliabilities <- append(loop_reliabilities, 0)
+                    loop_bics <- append(loop_bics, 1e14)
+                    loop_conv <- append(loop_conv, FALSE)
                 }
             }
+            # --- 4. SELECT BEST MODEL ---
+            best_idx <- which.min(loop_bics)
 
-            # --- Stage 2: Fixed Genotype (BLUEs) ---
-            if (!is.null(best_res_name)) {
-                final_res_form <- as.formula(spatial_models[[best_res_name]])
+            # If all models failed (BICs are all huge), default to index 1
+            if (length(best_idx) == 0) best_idx <- 1
 
-                fixed_form_final <- as.formula(paste(trt, "~ 1 + geno_f"))
-                random_form_final <- ~blk_f
+            best_resid_model <- resids_to_test[best_idx]
+            best_rel <- loop_reliabilities[best_idx]
+            best_conv <- loop_conv[best_idx]
 
-                if (best_res_name == "AR1xAR1" && !is.null(extra_random)) {
-                    random_form_final <- update(random_form_final, paste("~ . +", extra_random))
-                }
+            # --- 5. FIT FINAL MODEL (Fixed Genotype for BLUEs) ---
+            # Matches script: fixed includes genotype, random is just block
+            asreml::asreml.options(ai.sing = TRUE, aom = TRUE)
 
-                final_mod <- try(
-                    asreml::asreml(
-                        fixed = fixed_form_final,
-                        random = random_form_final,
-                        residual = final_res_form,
-                        data = spatial_data,
-                        na.action = asreml::na.method(y = "include", x = "include"),
-                        trace = FALSE
-                    ),
-                    silent = TRUE
-                )
+            fixed_form_final <- as.formula(paste(trait, "~ 1 +", genotype))
+            random_form_final <- as.formula(paste("~", block))
+            resid_form_final <- as.formula(paste("~", best_resid_model))
 
-                if (!inherits(final_mod, "try-error")) {
-                    final_mod <- force_convergence(final_mod)
+            amod2 <- try(asreml::asreml(
+                fixed = fixed_form_final,
+                random = random_form_final,
+                residual = resid_form_final,
+                data = sub,
+                na.action = asreml::na.method(x = "include", y = "include"),
+                trace = FALSE, workspace = "4gb"
+            ), silent = TRUE)
 
-                    # Predict BLUEs
-                    # classify="geno_f"
-                    # pworkspace increased to help with large fixed effects
-                    blues_pred <- predict(final_mod, classify = "geno_f", pworkspace = 64e6)$pvals
+            if (!inherits(amod2, "try-error")) {
+                # Ensure convergence
+                if (!amod2$converge) amod2 <- try(update(amod2), silent = TRUE)
 
-                    if (!inherits(blues_pred, "try-error")) {
-                        best_rel_idx <- which(model_comp$resid_model == best_res_name)
-                        final_rel <- model_comp$mean_reliability[best_rel_idx]
+                # Predict BLUEs
+                blues0 <- try(predict(amod2, classify = genotype, pworkspace = "4gb"), silent = TRUE)
 
-                        df_blues <- data.frame(
-                            genotype = blues_pred$geno_f,
-                            trait = trt,
-                            study = std,
-                            predicted.value = blues_pred$predicted.value,
-                            std.error = blues_pred$std.error,
-                            status = blues_pred$status,
-                            reliability = final_rel,
-                            resid_model = best_res_name,
-                            stringsAsFactors = FALSE
-                        )
+                if (!inherits(blues0, "try-error")) {
+                    blues_raw <- blues0$pvals
 
-                        # Fix: Filter out the "NA" genotypes created by grid padding
-                        # They will have NA in the original genotype_col equivalent or just be explicit <NA> factor level
-                        df_blues <- df_blues[!is.na(df_blues$genotype), ]
+                    # Construct Output Dataframe
+                    out_df <- blues_raw[, c(genotype, "predicted.value", "std.error")]
+                    colnames(out_df)[1] <- "germplasmName" # Ensure name match
 
-                        results_blues[[paste(std, trt, sep = "_")]] <- df_blues
+                    # Add Metrics
+                    out_df$trait <- trait
+                    out_df$study <- current_study
+                    out_df$residmod <- best_resid_model
+                    out_df$conv <- amod2$converge
+                    out_df$rel <- best_rel
+                    out_df$weight <- 1 / (out_df$std.error^2)
 
-                        stat_row <- model_comp[model_comp$resid_model == best_res_name, ]
-                        stat_row$study <- std
-                        stat_row$trait <- trt
-                        results_stats[[paste(std, trt, sep = "_")]] <- stat_row
-                    }
+                    all_studies_list[[i]] <- out_df
                 }
             } else {
-                warning(paste("No successful models for trait", trt, "in study", std))
+                cat(paste0("    ! Final model failed for: ", current_study, "\n"))
             }
-        } # End trait loop
-    } # End study loop
-
-    # Combine results
-    all_blues <- do.call(rbind, results_blues)
-    all_stats <- do.call(rbind, results_stats)
-
-    # Calculate Correlations if requested and data permits
-    pheno_cor <- NULL
-    if (!is.null(all_blues) && nrow(all_blues) > 0) {
-        # Pivot wider for correlation
-        wide_df <- all_blues %>%
-            select(genotype, trait, study, predicted.value) %>%
-            pivot_wider(names_from = c(trait, study), values_from = predicted.value)
-
-        if (ncol(wide_df) > 2) {
-            mat <- wide_df %>%
-                select(-genotype) %>%
-                as.matrix()
-            pheno_cor <- round(cor(mat, use = "pairwise.complete.obs"), 2)
         }
     }
 
-    return(list(
-        blues = all_blues,
-        model_stats = all_stats,
-        correlations = pheno_cor
-    ))
+    # Bind Results
+    final_blues <- do.call(rbind, all_studies_list)
+    return(final_blues)
 }
