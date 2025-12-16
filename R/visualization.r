@@ -96,11 +96,12 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
   } else if (type == "vaf") {
     .plot_vaf(x)
   } else if (type == "d_opt") {
-    .plot_dopt(get_d_optimality(x))
+    .plot_dopt(calculate_d_optimality(x))
   } else if (type == "diff") {
-    .plot_diff(get_i_classes(x, if (is.null(factor)) 2 else factor), n_label, highlight)
-  } # Dispatch to h2 plotter
-  else {
+    .plot_diff(calculate_i_classes(x, if (is.null(factor)) 2 else factor), n_label, highlight)
+  } else if (type == "h2") {
+    stop("For reliability/heritability plots, please run 'compare_h2()' first, then plot the result.")
+  } else {
     stop("Unknown type.")
   }
 }
@@ -136,7 +137,7 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
   p <- ncol(cor)
   rev <- cor[, p:1]
   par(mar = c(6, 6, 4, 2))
-  image(1:p, 1:p, rev, axes = F, col = hcl.colors(20, "RdBu", rev = T), breaks = seq(-1, 1, l = 21), main = "Correlation")
+  image(1:p, 1:p, rev, axes = F, col = hcl.colors(20, "RdYlGn"), breaks = seq(-1, 1, l = 21), main = "Correlation")
   axis(1, at = 1:p, labels = colnames(cor), las = 2, cex.axis = 0.7)
   axis(2, at = 1:p, labels = rev(rownames(cor)), las = 1, cex.axis = 0.7)
   for (i in 1:p) for (j in 1:p) if (rev[i, j] < 0.99) text(i, j, sprintf("%.2f", rev[i, j]), cex = 0.6)
@@ -161,7 +162,7 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
     ysub <- Y[tgt, , drop = F]
 
     par(mar = c(4, 4, 3, 1))
-    plot(1, type = "n", xlim = range(xv), ylim = range(ysub), xlab = paste("Load", f), ylab = "Effect", main = paste("Factor", f))
+    plot(1, type = "n", xlim = range(xv) * 1.1, ylim = range(ysub) * 1.1, xlab = paste("Load", f), ylab = "Effect", main = paste("Factor", f))
     grid()
     abline(h = 0, lty = 2)
     axis(1, at = xv, labels = F, tck = -0.02, col = "green")
@@ -187,7 +188,7 @@ plot.fa_asreml <- function(x, type = "fast", factor = NULL, n_label = 5, highlig
   lim <- range(rbind(Ls, S))
 
   par(mar = c(5, 5, 4, 2))
-  plot(1, type = "n", xlim = lim, ylim = lim, asp = 1, xlab = paste("F", fac[1]), ylab = paste("F", fac[2]), main = "Biplot")
+  plot(1, type = "n", xlim = lim * 1.1, ylim = lim * 1.1, asp = 1, xlab = paste("F", fac[1]), ylab = paste("F", fac[2]), main = "Biplot")
   grid()
   abline(h = 0, v = 0, lty = 2, col = "grey")
   arrows(0, 0, Ls[, 1], Ls[, 2], col = "darkgreen", length = 0.1)

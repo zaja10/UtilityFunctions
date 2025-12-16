@@ -50,6 +50,10 @@
 compare_h2 <- function(model, fa_object = NULL, grm = NULL,
                        classify = NULL, id_var = "Genotype",
                        methods = c("Cullis", "Oakey", "Standard")) {
+    if (inherits(model, "fa_asreml")) {
+        stop("First argument must be an asreml model object. Did you mean to pass 'fa_object'?")
+    }
+
     # --- STEP 1: VARIANCE EXTRACTION (SAME AS ABOVE) ---
     site_stats <- NULL
     sites <- NULL
@@ -248,11 +252,10 @@ compare_h2 <- function(model, fa_object = NULL, grm = NULL,
         )
     }
 
-    if(is_multisite) close(pb)
-  
-  final_df <- do.call(rbind, results_list)
-  rownames(final_df) <- NULL
-  class(final_df) <- c("h2_comparison", "data.frame")
-  return(final_df)
-}
+    if (is_multisite) close(pb)
 
+    final_df <- do.call(rbind, results_list)
+    rownames(final_df) <- NULL
+    class(final_df) <- c("h2_comparison", "data.frame")
+    return(final_df)
+}

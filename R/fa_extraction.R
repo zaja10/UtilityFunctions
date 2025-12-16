@@ -35,10 +35,10 @@
 #'   \item{meta}{Metadata regarding the model structure (k factors, model type).}
 #' }
 #'
-#' @importFrom dplyr %>% mutate select arrange desc bind_rows distinct
-#' @importFrom tidyr pivot_wider
+#' @importFrom dplyr %>% mutate select arrange desc bind_rows distinct left_join
+#' @importFrom tidyr pivot_wider pivot_longer
 #' @importFrom stringr str_extract
-#' @importFrom tibble column_to_rownames
+#' @importFrom tibble column_to_rownames rownames_to_column
 #' @importFrom stats coef cov2cor sd
 #' @export
 extract_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
@@ -55,7 +55,7 @@ extract_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     latent_part <- parts[grep("(fa|rr)\\(", parts)]
     gen_part_raw <- parts[grep("(fa|rr)\\(", parts, invert = TRUE)]
 
-    site_col <- sub("(fa|rr)\\(([^,]+),.*", "\\1", latent_part)
+    site_col <- sub("(fa|rr)\\(([^,]+),.*", "\\2", latent_part)
     k <- as.numeric(sub(".*,([0-9]+)\\).*", "\\1", latent_part))
 
     if (grepl("\\(", gen_part_raw)) {
@@ -68,6 +68,48 @@ extract_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     model_type <- if (is_rr) "Reduced Rank (RR)" else "Factor Analytic (FA)"
 
     cat(sprintf("-> Type: %s | Site: '%s' | Factors: %d\n", model_type, site_col, k))
+
+    # 1.1 DATA STATS (REPLICATION) ----------------------------------------------
+    data_name <- as.character(model$call$data)
+    rep_df <- NULL
+    if (exists(data_name)) {
+        raw_df <- get(data_name)
+        # Ensure columns exist
+        if (all(c(site_col, gen_col_name) %in% names(raw_df))) {
+            # Basic Aggregate: Count observations
+            counts <- table(raw_df[[gen_col_name]], raw_df[[site_col]])
+            n_obs_long <- as.data.frame(counts)
+            colnames(n_obs_long) <- c("Genotype", "Site", "n_obs")
+
+            # Replicated status (Overall)
+            total_n <- rowSums(counts)
+            rep_df <- data.frame(Genotype = names(total_n), n_obs_total = as.numeric(total_n)) %>%
+                mutate(replicated = n_obs_total > 1)
+        }
+    }
+
+    # 1.2 BLUEs (Fixed Effects) -------------------------------------------------
+    fixed_part <- coef(model)$fixed
+    blue_rows <- grep(gen_col_name, rownames(fixed_part))
+    blues_df <- NULL
+    if (length(blue_rows) > 0) {
+        # Extract
+        b_vals <- fixed_part[blue_rows, 1]
+
+        # Try to get SE if available
+        v_fixed <- tryCatch(sqrt(model$vcoeff$fixed[blue_rows]), error = function(e) rep(NA, length(b_vals)))
+
+        # Labels: Remove "Genotype_" prefix if present
+        # Usually ASReml output is "Genotype_A" or "GenotypeA" depending on factor
+        # We try to strip everything before the level name
+        # Heuristic: Remove the column name
+        g_names <- sub(paste0(".*", gen_col_name, "(_|)?"), "", rownames(fixed_part)[blue_rows])
+
+        blues_df <- data.frame(Genotype = g_names, BLUE = b_vals, BLUE_SE = v_fixed)
+
+        # Center BLUEs (as requested)
+        blues_df$BLUE <- blues_df$BLUE - mean(blues_df$BLUE, na.rm = TRUE)
+    }
 
     # 2. IDENTIFY PREFIX --------------------------------------------------------
     actual_term_prefix <- NULL
@@ -205,9 +247,32 @@ extract_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
         fast_df <- data.frame(Genotype = rownames(f_rot), OP = OP, RMSD = RMSD) %>% arrange(desc(OP))
     }
 
+    # 9. SITE BLUP RECONSTRUCTION (Regressed) -----------------------------------
+    site_blups_long <- NULL
+    if (has_scores) {
+        # Formula: G = F %*% L'
+        # This gives the Genetic Value predicted by the Latent Factors for each Site
+        reg_blups <- f_rot %*% t(lambda_rot)
+
+        # Convert to Long Format
+        site_blups_long <- as.data.frame(reg_blups) %>%
+            tibble::rownames_to_column("Genotype") %>%
+            tidyr::pivot_longer(-Genotype, names_to = "Site", values_to = "Pred_Value")
+
+        # Merge with N_Obs if available
+        if (exists("n_obs_long")) {
+            # Be careful with Site names matching
+            # lambda_rot rownames are Sites
+            site_blups_long <- site_blups_long %>%
+                dplyr::left_join(n_obs_long, by = c("Genotype", "Site"))
+        }
+    }
+
     out <- list(
         loadings = list(raw = lambda_mat, rotated = lambda_rot),
-        scores = if (has_scores) list(raw = f_mat, rotated = f_rot) else NULL,
+        scores = if (has_scores) list(raw = f_mat, rotated = f_rot, blups_in_met = site_blups_long) else NULL,
+        blues = blues_df,
+        data_stats = rep_df,
         var_comp = list(psi = psi_df, vaf = vaf_df),
         matrices = list(G = G_est, Cor = C_est),
         fast = fast_df, rotation_matrix = rot_mat, meta = list(k = k, type = model_type, classify = classify)
