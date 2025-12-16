@@ -94,6 +94,6 @@ test_that("plot functions run without error", {
     pdf(NULL) # Sink plot output
     expect_silent(plot_connectivity(df, x = "Year", trace = "Genotype"))
     expect_silent(plot_met_trend(df, x = "Year", y = "Yield"))
-    expect_silent(plot_trial_map(df, trial_val = "T1"))
+    expect_silent(plot_trial_map(df[df$Trial == "T1", ]))
     dev.off()
 })

@@ -23,3 +23,36 @@ run_parallel <- function(X, FUN, cores = NULL, ...) {
         return(parallel::parLapply(cl, X, FUN, ...))
     }
 }
+
+#' Bind Parallel FA Results
+#'
+#' Aggregates a list of results from \code{run_parallel} into a single dataframe.
+#' Useful when processing 50 sites and needing a master summary table.
+#'
+#' @param result_list A list of objects (usually containing extraction results).
+#' @param element Character. The specific element to extract (e.g., "fast" or "vaf").
+#' @return A combined dataframe with a "Source" column.
+#' @export
+bind_fa_results <- function(result_list, element = "fast") {
+    # Filter NULLs or Errors
+    valid_results <- result_list[!sapply(result_list, is.null)]
+
+    if (length(valid_results) == 0) {
+        warning("No valid results to bind.")
+        return(NULL)
+    }
+
+    combined <- do.call(rbind, lapply(names(valid_results), function(nm) {
+        obj <- valid_results[[nm]]
+        if (!element %in% names(obj)) {
+            return(NULL)
+        }
+
+        df <- obj[[element]]
+        # Add ID column if list is named
+        if (!is.null(nm) && nm != "") df$Source_ID <- nm
+        return(df)
+    }))
+
+    return(combined)
+}

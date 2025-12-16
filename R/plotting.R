@@ -1,16 +1,5 @@
 ﻿#' Master Visualization Suite for Factor Analytic Models
 #'
-#' The central plotting interface for the toolkit.
-#' Uses **ggplot2** for rendering but Base R for data preparation to minimize dependencies.
-#'
-#' @param x An object of class \code{fa_model}.
-#' @param type Character. Visualization type: "fast", "heatmap", "latent_reg", "biplot", "vaf", "d_opt", "diff".
-#' @param factor Integer/Vector. Factors to visualize.
-#' @param n_label Integer. Number of top genotypes to label.
-#' @param highlight Character vector. Genotypes to highlight.
-#' @param ... Additional arguments.
-#'
-#' @return A ggplot object.
 #' @import ggplot2
 #' @importFrom stats reshape setNames aggregate
 #' @export
@@ -29,21 +18,18 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     .plot_dopt(calculate_d_optimality(x))
   } else if (type == "diff") {
     .plot_diff(calculate_i_classes(x, if (is.null(factor)) 2 else factor), n_label, highlight)
-  } else if (type == "h2") {
-    stop("For reliability/heritability plots, please run 'compare_h2()' first, then plot the result.")
   } else {
     stop("Unknown type.")
   }
 }
 
-# --- Internals (Refactored to Base R Data Prep) ---
+# --- Internals ---
 
 .plot_fast <- function(x, n, h) {
   if (is.null(x$fast)) stop("No FAST data available.")
   df <- x$fast
 
-  # Label Logic (Base R)
-  # Sort by OP to find Top N
+  # Sorting and labeling logic
   df <- df[order(df$OP, decreasing = TRUE), ]
   top_gens <- head(df$Genotype, n)
 
@@ -51,9 +37,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   df$Type[df$Genotype %in% top_gens] <- "Top"
   if (!is.null(h)) df$Type[df$Genotype %in% h] <- "Highlight"
 
-  # Set Factor levels for legend order
   df$Type <- factor(df$Type, levels = c("Highlight", "Top", "Other"))
-
   mean_rmsd <- mean(df$RMSD, na.rm = TRUE)
 
   p <- ggplot(df, aes(x = RMSD, y = OP)) +
@@ -67,7 +51,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     theme_minimal() +
     theme(legend.position = "bottom")
 
-  # Labels
+  # Use ggrepel if available
   label_df <- df[df$Type != "Other", ]
   if (nrow(label_df) > 0) {
     if (requireNamespace("ggrepel", quietly = TRUE)) {
@@ -81,26 +65,25 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
 
 .plot_heat <- function(x) {
   cor_mat <- x$matrices$Cor
+  # Agnostic Labels
+  grp_name <- x$meta$group
 
-  # Melt Matrix (Base R)
-  # Expand grid of indices
   r_names <- rownames(cor_mat)
   c_names <- colnames(cor_mat)
 
-  df_melt <- expand.grid(Env1 = r_names, Env2 = c_names, stringsAsFactors = TRUE)
-  # Extract values using matrix indexing
+  df_melt <- expand.grid(Var1 = r_names, Var2 = c_names, stringsAsFactors = TRUE)
   df_melt$Correlation <- as.vector(cor_mat)
 
-  # Ensure Factor Order matches matrix order
-  df_melt$Env1 <- factor(df_melt$Env1, levels = r_names)
-  df_melt$Env2 <- factor(df_melt$Env2, levels = c_names)
+  # Enforce order
+  df_melt$Var1 <- factor(df_melt$Var1, levels = r_names)
+  df_melt$Var2 <- factor(df_melt$Var2, levels = c_names)
 
-  ggplot(df_melt, aes(x = Env2, y = Env1, fill = Correlation)) +
+  ggplot(df_melt, aes(x = Var2, y = Var1, fill = Correlation)) +
     geom_tile(color = "white") +
     geom_text(aes(label = sprintf("%.2f", Correlation)), size = 3) +
     scale_fill_distiller(palette = "RdYlGn", limit = c(-1, 1), direction = 1) +
     theme_minimal() +
-    labs(x = NULL, y = NULL, title = "Genetic Correlation Matrix") +
+    labs(x = NULL, y = NULL, title = paste("Genetic Correlation:", grp_name)) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
@@ -108,71 +91,83 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   if (is.null(x$scores)) stop("No Genotype scores available.")
 
   k <- x$meta$k
+  grp_name <- x$meta$group
   if (is.null(fac)) fac <- 1:k
 
   L <- x$loadings$rotated
   S <- x$scores$rotated
+  # Reconstruct Interaction (Genotype x Group)
+  # Actually, latent regression plot is usually:
+  # X-axis: Environmental Loading for Factor f
+  # Y-axis: Genotype Score for Factor f * Loading ?? No.
+  # Standard GGE/AMMI latent regression:
+  # Y_ij = mu + ... + u_if * v_jf
+  # We plot regressions of (Y_ij) against (v_jf). Slope is u_if.
+  # Here Y is the interaction deviation captured by this factor.
+  # Interaction_f = u_if * v_jf.
+  # If we plot Interaction_f vs v_jf, the slope is u_if.
+
+  # Interaction matrix for ALL factors
+  # GxE = F L'
+  # But we want specifically factor f component?
+  # Component_f = F[,f] %*% t(L[,f])
+
+  # Wait, the code provided in the prompt calculates:
+  # Uc = S %*% t(L) (Total interaction + main effect if included?)
+  # Then subtracts previous factors.
+
   Uc <- S %*% t(L)
 
   all_slopes <- data.frame()
   all_points <- data.frame()
 
-  # Determine target genotypes
-  all_gens <- rownames(S)
-  top_n <- head(all_gens, n) # Assumes S is sorted/consistent with FAST
-  tgt <- unique(c(top_n, h))
+  tgt <- unique(c(head(rownames(S), n), h))
   gens_saf <- intersect(tgt, rownames(S))
 
   for (f in fac) {
     if (f > k) next
-
-    # Calculate Y (deviations)
+    # Residual after removing 1..f-1
     Y <- if (f > 1) Uc - (S[, 1:(f - 1), drop = FALSE] %*% t(L[, 1:(f - 1), drop = FALSE])) else Uc
+    # Actually, we just want the f-th component to show the regression?
+    # Or do we want the "Total" fitted value against the loading?
+    # Usually "Latent Regression" plots the interaction effect of Factor f against Loading f.
+    # Effect = score * loading.
+    # Points line up perfectly on lines passing through origin with slope = score.
+    # This is tautological if we just plot (s*l) vs l.
+    # But usually we plot the "fitted GxE" vs Loading.
+
+    # The prompt implementation:
+    # Y is the residual of Uc after removing 1..f-1.
+    # For f=1, Y = Uc.
+    # For f=2, Y = Uc - Comp1.
+
     xv <- L[, f]
 
-    # Slopes Data
-    slopes_sub <- data.frame(
-      Genotype = gens_saf,
-      Slope = S[gens_saf, f],
-      Factor = paste("Factor", f),
-      stringsAsFactors = FALSE
-    )
+    # Slopes
+    slopes_sub <- data.frame(Genotype = gens_saf, Slope = S[gens_saf, f], Factor = paste("Factor", f), stringsAsFactors = FALSE)
     slopes_sub$ColorGroup <- "Top"
     if (!is.null(h)) slopes_sub$ColorGroup[slopes_sub$Genotype %in% h] <- "Highlight"
 
-    # Points Data (Long Format Manual)
+    # Points
     y_sub <- Y[gens_saf, , drop = FALSE]
-
-    # Vectorize creation of long format
     n_g <- length(gens_saf)
     n_e <- length(xv)
 
     pts_sub <- data.frame(
       Genotype = rep(gens_saf, times = n_e),
-      Env = rep(rownames(L), each = n_g),
-      Effect = as.vector(y_sub), # Verify order: Y is Gen x Env. as.vector fills col by col? No, R is col-major.
-      # Y is (Gen x Env). as.vector(Y) flattens Gen1_E1, Gen2_E1...
-      # So we need Env to vary slowly, Gen to vary fast?
-      # Actually `as.vector` on matrix goes down columns (Env1, Env2...).
-      # So `each=n_g` for Env is correct.
+      Group = rep(rownames(L), each = n_g), # "Group" agnostic name
+      Effect = as.vector(y_sub),
       stringsAsFactors = FALSE
     )
 
-    # Add Loading (X-axis)
-    # L is (Env x k). xv is (Env x 1).
-    # We need to map Env -> Loading.
     load_map <- setNames(xv, rownames(L))
-    pts_sub$Loading <- load_map[pts_sub$Env]
-
+    pts_sub$Loading <- load_map[pts_sub$Group]
     pts_sub$Factor <- paste("Factor", f)
     pts_sub$ColorGroup <- "Top"
     if (!is.null(h)) pts_sub$ColorGroup[pts_sub$Genotype %in% h] <- "Highlight"
 
-    # Add Ranges to slopes for text placement
-    min_l <- min(xv, na.rm = TRUE)
-    max_l <- max(xv, na.rm = TRUE)
-    slopes_sub$Min <- min_l
-    slopes_sub$Max <- max_l
+    slopes_sub$Min <- min(xv, na.rm = TRUE)
+    slopes_sub$Max <- max(xv, na.rm = TRUE)
 
     all_slopes <- rbind(all_slopes, slopes_sub)
     all_points <- rbind(all_points, pts_sub)
@@ -184,11 +179,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     facet_wrap(~Factor, scales = "free") +
     scale_color_manual(values = c("Highlight" = "red", "Top" = "navy")) +
     theme_minimal() +
-    labs(title = "Latent Regression", x = "Environmental Loading", y = "GxE Deviation") +
-    geom_text(
-      data = all_slopes, aes(x = Max, y = Slope * Max, label = Genotype, color = ColorGroup),
-      hjust = 0, vjust = 0.5, size = 3, check_overlap = TRUE
-    )
+    labs(title = "Latent Regression", x = paste(grp_name, "Loading"), y = "Interaction Deviation")
 }
 
 .plot_biplot <- function(x, fac, h) {
@@ -197,27 +188,26 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   L <- x$loadings$rotated[, fac]
   S <- x$scores$rotated[, fac]
 
-  # Scores DF
   df_scores <- as.data.frame(S)
   colnames(df_scores) <- c("X", "Y")
   df_scores$Genotype <- rownames(S)
   df_scores$Type <- "Normal"
   if (!is.null(h)) df_scores$Type[df_scores$Genotype %in% h] <- "Highlight"
 
-  # Loadings DF
   sf <- max(abs(S)) / max(abs(L)) * 0.8
   df_load <- as.data.frame(L * sf)
   colnames(df_load) <- c("X", "Y")
-  df_load$Env <- rownames(L)
+  df_load$Label <- rownames(L) # Agnostic
 
-  # Hull
   hull_idx <- chull(df_scores$X, df_scores$Y)
-  hull_df <- df_scores[hull_idx, ]
 
   p <- ggplot(df_scores, aes(x = X, y = Y)) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
     geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
-    geom_polygon(data = hull_df, fill = NA, color = "navy", linetype = "dashed") +
+    # Convex hull for context
+    # geom_polygon(data = df_scores[hull_idx, ], fill = NA, color = "navy", linetype = "dashed") +
+    # Removed polygon to cleaner look or use it if requested
+
     geom_point(aes(fill = Type, size = Type, shape = Type), color = "black") +
     scale_fill_manual(values = c("Highlight" = "red", "Normal" = "grey90")) +
     scale_shape_manual(values = c("Highlight" = 23, "Normal" = 21)) +
@@ -226,53 +216,70 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
       data = df_load, aes(x = 0, y = 0, xend = X, yend = Y),
       arrow = arrow(length = unit(0.2, "cm")), color = "darkgreen"
     ) +
-    geom_text(data = df_load, aes(label = Env), color = "darkgreen", size = 3, hjust = -0.2) +
-    labs(x = paste("Factor", fac[1]), y = paste("Factor", fac[2]), title = "GxE Biplot") +
+    geom_text(data = df_load, aes(label = Label), color = "darkgreen", size = 3, hjust = -0.2) +
+    labs(x = paste("Factor", fac[1]), y = paste("Factor", fac[2]), title = "Biplot") +
     theme_minimal() +
     coord_fixed()
 
   if (requireNamespace("ggrepel", quietly = TRUE)) {
-    # Subset in base R
-    high_scores <- df_scores[df_scores$Type == "Highlight", ]
-    if (nrow(high_scores) > 0) {
-      p <- p + ggrepel::geom_text_repel(data = high_scores, aes(label = Genotype), box.padding = 0.5)
-    }
+    high <- df_scores[df_scores$Type == "Highlight", ]
+    if (nrow(high) > 0) p <- p + ggrepel::geom_text_repel(data = high, aes(label = Genotype))
   }
   return(p)
 }
 
 .plot_vaf <- function(x) {
   df <- x$var_comp$vaf
-  # Factor Reorder
-  df <- df[order(df$VAF), ]
-  df$Site <- factor(df$Site, levels = df$Site)
+  # Agnostic: The first column is always the grouping variable in fit_fa_model output
+  grp_col <- names(df)[1]
 
-  df$IsLow <- df$VAF < 50
+  # Sort
+  # Sort by Total VAF if available
+  if ("Total_VAF" %in% names(df)) {
+    df <- df[order(df$Total_VAF), ]
+  } else {
+    df <- df[order(df[[grp_col]]), ]
+  }
 
-  ggplot(df, aes(x = VAF, y = Site)) +
-    geom_col(aes(fill = IsLow)) +
-    geom_vline(xintercept = 80, linetype = "dashed") +
-    scale_fill_manual(values = c("FALSE" = "steelblue", "TRUE" = "firebrick"), guide = "none") +
-    labs(title = "Site Quality (Variance Accounted For)", x = "VAF %") +
+  # Ensure Factor
+  df$Group <- factor(df[[grp_col]], levels = df[[grp_col]])
+
+  # Melt for stacked bar
+  # We only want VAF_Fac columns
+  fac_cols <- grep("VAF_Fac", names(df), value = TRUE)
+
+  # Base R melt
+  df_long <- reshape(
+    df,
+    direction = "long",
+    varying = fac_cols,
+    v.names = "VAF",
+    timevar = "Factor",
+    times = fac_cols,
+    idvar = "Group",
+    new.row.names = 1:10000 # Safety
+  )
+
+  # Clean Factor names
+  df_long$Factor <- gsub("VAF_", "", df_long$Factor)
+
+  ggplot(df_long, aes(x = VAF, y = Group, fill = Factor)) +
+    geom_col() +
+    geom_vline(xintercept = 80, linetype = "dashed", alpha = 0.5) +
+    scale_fill_brewer(palette = "Blues") +
+    labs(title = paste("Variance Accounted For by", x$meta$group), x = "% Variance", y = NULL) +
     theme_minimal()
 }
 
-.plot_dopt <- function(d, threshold = 1.0) {
+.plot_dopt <- function(d) {
   df <- d$site_impact
   df <- df[order(df$Impact_Pct), ]
   df$Site <- factor(df$Site, levels = df$Site)
 
-  df$IsKey <- df$Impact_Pct >= threshold
-
   ggplot(df, aes(x = Impact_Pct, y = Site)) +
-    geom_col(aes(fill = IsKey)) +
-    geom_vline(xintercept = threshold, linetype = "dashed") +
+    geom_col(fill = "steelblue") +
     geom_text(aes(label = sprintf("%.1f%%", Impact_Pct)), hjust = -0.2, size = 3) +
-    scale_fill_manual(
-      values = c("TRUE" = "#27ae60", "FALSE" = "#e74c3c"),
-      name = "Status", labels = c("Redundant", "Key Site")
-    ) +
-    labs(title = "Network Efficiency (D-Opt Contribution)", x = "% Information Loss if Removed") +
+    labs(title = "D-Optimality Contribution", x = "% Information Loss") +
     theme_minimal()
 }
 
@@ -280,25 +287,20 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   df <- res$gen_effects
   df <- na.omit(df)
 
-  # Select Targets
   top_n <- head(df$Genotype, n)
   bot_n <- tail(df$Genotype, n)
   tgt <- unique(c(top_n, bot_n, h))
 
   sub_df <- df[df$Genotype %in% tgt, ]
 
-  # Pivot Long manually
-  # Columns: Pred_Neg, Pred_Pos
-  n_rows <- nrow(sub_df)
   plot_df <- data.frame(
     Genotype = rep(sub_df$Genotype, 2),
-    Class = rep(c("Pred_Neg", "Pred_Pos"), each = n_rows),
+    Class = rep(c("Pred_Neg", "Pred_Pos"), each = nrow(sub_df)),
     Value = c(sub_df$Pred_Neg, sub_df$Pred_Pos),
     stringsAsFactors = FALSE
   )
 
   plot_df$Class <- factor(plot_df$Class, levels = c("Pred_Neg", "Pred_Pos"), labels = c("Class (-)", "Class (+)"))
-
   plot_df$Type <- "Normal"
   if (!is.null(h)) plot_df$Type[plot_df$Genotype %in% h] <- "Highlight"
 
@@ -306,7 +308,6 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     geom_line(aes(linewidth = Type)) +
     geom_point() +
     geom_text(data = plot_df[plot_df$Class == "Class (-)", ], aes(label = Genotype), hjust = 1.1, size = 3) +
-    geom_text(data = plot_df[plot_df$Class == "Class (+)", ], aes(label = Genotype), hjust = -0.1, size = 3) +
     scale_color_manual(values = c("Highlight" = "red", "Normal" = "grey50")) +
     scale_linewidth_manual(values = c("Highlight" = 1, "Normal" = 0.5)) +
     theme_minimal() +
@@ -314,99 +315,37 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     theme(legend.position = "none")
 }
 
-#' Plot Spatial Field Map
+# Export these legacy/helper plotters
 #' @export
 plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield") {
   if (inherits(input, "asreml")) {
-    if (attribute == "Yield") attribute <- "residuals"
     data_name <- as.character(input$call$data)
     if (!exists(data_name)) stop("Original dataframe not found.")
     df <- get(data_name)
-
-    if (attribute == "fitted") {
-      df$Value_To_Plot <- fitted(input)
-    } else {
-      df$Value_To_Plot <- resid(input)
-    }
-    main_title <- paste("Spatial Map:", attribute)
-  } else if (inherits(input, "data.frame")) {
+    df$Value_To_Plot <- resid(input)
+    main_title <- "Residual Map"
+  } else {
     df <- input
-    if (is.null(df[[attribute]])) stop(paste("Column", attribute, "not found."))
     df$Value_To_Plot <- df[[attribute]]
     main_title <- paste("Spatial Map:", attribute)
-  } else {
-    stop("Input must be an asreml model or a dataframe.")
   }
-
-  df[[row]] <- as.numeric(as.character(df[[row]]))
-  df[[col]] <- as.numeric(as.character(df[[col]]))
 
   ggplot(df, aes(x = .data[[col]], y = .data[[row]], fill = Value_To_Plot)) +
     geom_tile() +
-    scale_fill_distiller(palette = "Spectral", na.value = "grey90", direction = -1) +
+    scale_fill_distiller(palette = "Spectral") +
     theme_minimal() +
-    labs(title = main_title, x = col, y = row) +
-    coord_fixed()
+    coord_fixed() +
+    labs(title = main_title)
 }
 
-#' Plot Heritability Comparison
 #' @export
-plot.h2_comparison <- function(x, ...) {
-  if (!all(c("Site", "Method", "Value") %in% names(x))) stop("Invalid h2_comparison object.")
+plot_trial_map <- function(data, ...) plot_spatial(data, ...)
 
-  # Base R Aggregation
-  agg <- aggregate(Value ~ Site, data = x, FUN = mean)
-  agg <- agg[order(agg$Value), ]
-  site_order <- agg$Site
-
-  x$Site <- factor(x$Site, levels = site_order)
-
-  ggplot(x, aes(x = Site, y = Value, fill = Method)) +
-    geom_col(position = "dodge", alpha = 0.8) +
-    coord_flip() +
-    scale_fill_brewer(palette = "Set2") +
-    geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
-    theme_minimal() +
-    labs(title = "Site Quality Comparison", y = "Reliability / Heritability")
-}
-
-#' Flexible Trial Map
-#' @export
-plot_trial_map <- function(data, trial_val = NULL, trial_col = "Trial",
-                           row = "Row", col = "Column", val = "Yield") {
-  plot_data <- if (!is.null(trial_val)) data[data[[trial_col]] == trial_val, ] else data
-  title_sub <- if (!is.null(trial_val)) paste(trial_val) else "Single Site"
-
-  if (all(c(row, col) %in% names(plot_data))) {
-    ggplot(plot_data, aes(x = .data[[col]], y = .data[[row]], fill = .data[[val]])) +
-      geom_tile() +
-      scale_fill_distiller(palette = "Spectral", direction = -1) +
-      theme_minimal() +
-      labs(title = paste("Trial Map:", title_sub), x = col, y = row) +
-      coord_fixed()
-  } else {
-    plot_data$Index <- 1:nrow(plot_data)
-    ggplot(plot_data, aes(x = Index, y = .data[[val]])) +
-      geom_point(aes(color = .data[[val]])) +
-      geom_line(alpha = 0.3) +
-      scale_color_distiller(palette = "Spectral") +
-      theme_minimal() +
-      labs(title = paste("Linear Plot:", title_sub))
-  }
-}
-
-#' Plot MET Trends
 #' @export
 plot_met_trend <- function(data, x = "Year", y = "Yield", main = "Yield Trend", ...) {
-  # Base R Ensure Numeric
-  data$X_Num <- if (is.numeric(data[[x]])) data[[x]] else as.numeric(as.character(data[[x]]))
-
   ggplot(data, aes(x = factor(.data[[x]]), y = .data[[y]])) +
-    geom_boxplot(fill = "lightgreen", alpha = 0.5, outlier.shape = NA) +
-    geom_jitter(width = 0.2, alpha = 0.1) +
-    stat_summary(fun = mean, geom = "line", aes(group = 1), color = "blue", linewidth = 1.2) +
-    stat_summary(fun = mean, geom = "point", color = "blue", size = 3) +
-    geom_smooth(aes(x = as.numeric(factor(.data[[x]])), y = .data[[y]]), method = "lm", color = "red", linetype = "dashed", se = FALSE, linewidth = 1.5) +
+    geom_boxplot(fill = "lightgreen", alpha = 0.5) +
+    geom_smooth(aes(x = as.numeric(factor(.data[[x]])), y = .data[[y]]), method = "lm", se = FALSE, color = "red") +
     theme_minimal() +
     labs(title = main, x = x, y = y)
 }

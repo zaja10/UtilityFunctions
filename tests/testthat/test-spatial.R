@@ -70,6 +70,6 @@ test_that("plot functions run without error", {
     p2 <- plot_met_trend(df, x = "Year", y = "Yield")
     expect_s3_class(p2, "ggplot")
 
-    p3 <- plot_trial_map(df, trial_val = "T1")
+    p3 <- plot_trial_map(df[df$Trial == "T1", ])
     expect_s3_class(p3, "ggplot")
 })

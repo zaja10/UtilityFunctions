@@ -6,23 +6,6 @@
 \usage{
 \method{plot}{fa_model}(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...)
 }
-\arguments{
-\item{x}{An object of class \code{fa_model}.}
-
-\item{type}{Character. Visualization type: "fast", "heatmap", "latent_reg", "biplot", "vaf", "d_opt", "diff".}
-
-\item{factor}{Integer/Vector. Factors to visualize.}
-
-\item{n_label}{Integer. Number of top genotypes to label.}
-
-\item{highlight}{Character vector. Genotypes to highlight.}
-
-\item{...}{Additional arguments.}
-}
-\value{
-A ggplot object.
-}
 \description{
-The central plotting interface for the toolkit.
-Uses **ggplot2** for rendering but Base R for data preparation to minimize dependencies.
+Master Visualization Suite for Factor Analytic Models
 }

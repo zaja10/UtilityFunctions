@@ -11,7 +11,7 @@ test_that("plot.fa_model returns a ggplot object", {
         loadings = list(rotated = loadings),
         matrices = list(Cor = cor(t(loadings))), # Mock correlation matrix
         meta = list(k = 2),
-        var_comp = list(vaf = data.frame(Site = paste0("E", 1:5), VAF = runif(5, 50, 99))),
+        var_comp = list(vaf = data.frame(Site = paste0("E", 1:5), VAF_Fac1 = runif(5, 20, 50), VAF_Fac2 = runif(5, 20, 40))),
         fast = data.frame(Genotype = paste0("G", 1:10), OP = rnorm(10), RMSD = runif(10))
     )
     class(mock_model) <- "fa_model"

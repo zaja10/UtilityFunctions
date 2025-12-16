@@ -587,3 +587,46 @@ fa.asreml <- function(...) {
     warning("Deprecated: 'fa.asreml' is deprecated. Use 'fit_fa_model()' instead.")
     fit_fa_model(...)
 }
+
+#' Summary Method for FA Model
+#'
+#' Provides a commercial-grade summary of the Factor Analytic model,
+#' including mean reliability, variance accounted for, and key correlations.
+#'
+#' @param object An object of class \code{fa_model}.
+#' @param ... Additional arguments.
+#' @export
+summary.fa_model <- function(object, ...) {
+    k <- object$meta$k
+    grp <- object$meta$group
+
+    cat(sprintf("\n=== FA Model Summary (%s factors) ===\n", k))
+    cat(sprintf("Dimension: %s x %s\n", nrow(object$matrices$G), object$meta$genotype))
+
+    # 1. Variance Accounted For
+    vaf <- object$var_comp$vaf
+    if (!is.null(vaf$Total_VAF)) {
+        mean_vaf <- mean(vaf$Total_VAF, na.rm = TRUE)
+        cat(sprintf("Mean Variance Accounted For (VAF): %.1f%%\n", mean_vaf))
+
+        # Count low VAF sites
+        n_low <- sum(vaf$Total_VAF < 70, na.rm = TRUE)
+        if (n_low > 0) cat(sprintf("Warning: %d %ss have VAF < 70%%\n", n_low, grp))
+    }
+
+    # 2. Correlations
+    cor_mat <- object$matrices$Cor
+    upper_tri <- cor_mat[upper.tri(cor_mat)]
+    cat(sprintf(
+        "Average Genetic Correlation: %.2f (Range: %.2f to %.2f)\n",
+        mean(upper_tri), min(upper_tri), max(upper_tri)
+    ))
+
+    # 3. FAST Indices Preview
+    if (!is.null(object$fast)) {
+        cat("\n--- Top 3 Genotypes (by Overall Performance) ---\n")
+        print(head(object$fast[, c("Genotype", "OP", "RMSD")], 3), row.names = FALSE)
+    }
+
+    invisible(object)
+}
