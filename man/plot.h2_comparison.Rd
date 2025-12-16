@@ -7,11 +7,10 @@
 \method{plot}{h2_comparison}(x, ...)
 }
 \arguments{
-\item{x}{An object of class \code{h2_comparison} produced by \code{compare_h2()}.}
+\item{x}{An object of class \code{h2_comparison}.}
 
-\item{...}{Additional arguments passed to \code{barplot}.}
+\item{...}{Additional arguments.}
 }
 \description{
-Visualizes the output of \code{compare_h2} using a grouped bar chart.
-Compares different metrics (Cullis, Oakey, Standard) across sites.
+Plot Heritability/Reliability Comparison
 }

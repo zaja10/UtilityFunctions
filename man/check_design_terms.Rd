@@ -16,15 +16,15 @@ check_design_terms(
 \arguments{
 \item{data}{The dataframe containing the MET data.}
 
-\item{study_col}{String. Name of the column defining the Study/Experiment (default "studyName").}
+\item{study_col}{String. Name of the column defining the Study/Experiment.}
 
-\item{row_col}{String. Name of the Row column (default "rowNumber").}
+\item{row_col}{String. Name of the Row column.}
 
-\item{col_col}{String. Name of the Column column (default "colNumber").}
+\item{col_col}{String. Name of the Column column.}
 
-\item{block_col}{String. Name of the Block column (default "blockNumber").}
+\item{block_col}{String. Name of the Block column.}
 
-\item{rep_col}{String. Name of the Replicate column (default "replicate").}
+\item{rep_col}{String. Name of the Replicate column.}
 }
 \value{
 A dataframe summarizing which terms are available for each study.

@@ -34,10 +34,11 @@
 #' @seealso \code{\link{fit_fa_model}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}, \code{\link{compare_h2}}
 #'
 #' @import ggplot2
-#' @importFrom dplyr filter mutate arrange slice_head inner_join left_join select
+#' @importFrom dplyr filter mutate arrange slice_head inner_join left_join select case_when
 #' @importFrom tibble rownames_to_column
 #' @importFrom tidyr pivot_longer pivot_wider
 #' @importFrom ggrepel geom_text_repel
+#' @importFrom ggplot2 ggplot aes geom_point geom_abline geom_vline geom_tile geom_text labs theme_minimal theme facet_wrap scale_fill_gradient2 coord_fixed scale_fill_manual scale_color_manual element_text
 #' @export
 plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...) {
   if (type == "fast") {
@@ -437,9 +438,9 @@ plot_met_trend <- function(data, x = "Year", y = "Yield", main = "Yield Trend", 
   ggplot(data, aes(x = factor(.data[[x]]), y = .data[[y]])) +
     geom_boxplot(fill = "lightgreen", alpha = 0.5, outlier.shape = NA) +
     geom_jitter(width = 0.2, alpha = 0.1) +
-    stat_summary(fun = mean, geom = "line", aes(group = 1), color = "blue", size = 1.2) +
+    stat_summary(fun = mean, geom = "line", aes(group = 1), color = "blue", linewidth = 1.2) +
     stat_summary(fun = mean, geom = "point", color = "blue", size = 3) +
-    geom_smooth(aes(x = as.numeric(factor(.data[[x]])), y = .data[[y]]), method = "lm", color = "red", linetype = "dashed", se = FALSE) +
+    geom_smooth(aes(x = as.numeric(factor(.data[[x]])), y = .data[[y]]), method = "lm", color = "red", linetype = "dashed", se = FALSE, linewidth = 1.5) +
     theme_minimal() +
     labs(title = main, x = x, y = y)
 }

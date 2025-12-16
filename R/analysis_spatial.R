@@ -116,7 +116,7 @@ check_design_terms <- function(data,
 #'
 #' @param mat A symmetric numeric matrix.
 #' @return A dataframe with columns "Row", "Col", "Value".
-#' @importFrom Matrix Matrix as
+#' @importFrom Matrix Matrix
 #' @keywords internal
 mat2sparse <- function(mat) {
     # Force lower triangle (zero out upper) to ensure strictly lower triangular sparse matrix
@@ -128,7 +128,8 @@ mat2sparse <- function(mat) {
 
     # Convert to Triplet format (i, j, x)
     # TsparseMatrix is safe for extraction
-    dsT <- as(mat_sparse, "TsparseMatrix")
+    # Force to 'general' (dgCMatrix) first to ensure explicit storage (handles ddiMatrix issue)
+    dsT <- as(as(mat_sparse, "dgCMatrix"), "TsparseMatrix")
 
     # Convert to 1-based indices
     out <- data.frame(

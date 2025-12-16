@@ -23,18 +23,18 @@
 
 \item{factor}{Integer or Vector. Controls which factors are visualized.
 \itemize{
-  \item For \code{"latent_reg"}: Can be a single integer (e.g., \code{2}) to see specific stability drivers, or \code{NULL} to plot all factors in a grid.
+  \item For \code{"latent_reg"}: Can be a single integer to see specific stability drivers, or \code{NULL} to plot all factors.
   \item For \code{"biplot"}: A vector of length 2 (e.g., \code{c(1, 2)}) specifying the X and Y axes.
 }}
 
 \item{n_label}{Integer. The number of top-performing genotypes (sorted by OP) to automatically label. Default is 5.}
 
-\item{highlight}{Character vector. Names of specific genotypes to highlight (e.g., Check varieties). These will be rendered in **Red** with distinct symbols.}
+\item{highlight}{Character vector. Names of specific genotypes to highlight (e.g., Check varieties).}
 
-\item{...}{Additional graphical parameters passed to the internal base R plot functions (e.g., \code{main}, \code{cex}).}
+\item{...}{Additional arguments passed to ggplot2 themes or internally.}
 }
 \value{
-No return value, called for side effects (plotting).
+A ggplot object.
 }
 \description{
 The central plotting interface for the toolkit. This S3 method dispatches to
@@ -42,55 +42,7 @@ specific visualization engines based on the \code{type} argument, covering the
 full analysis lifecycle: from Site Quality Control to Genotype Selection and
 Mechanistic GxE analysis.
 
-It uses **Base R graphics** to ensure zero external dependencies and maximum
-stability/speed, while producing publication-quality figures by default.
-}
-\details{
-\strong{1. FAST Plot (\code{type = "fast"}):}
-The primary tool for breeder decision-making.
-\itemize{
-  \item \strong{Y-axis (OP):} Genetic potential across the trial network. Higher is better.
-  \item \strong{X-axis (RMSD):} Stability. Points near 0 are stable; points far right are highly reactive to GxE.
-  \item \emph{Selection Strategy:} Select genotypes in the Top-Left quadrant (High OP, Low RMSD).
-}
-
-\strong{2. Latent Regression (\code{type = "latent_reg"}):}
-Visualizes *why* a variety is unstable.
-\itemize{
-  \item \strong{Factor 1:} Represents general potential. Slopes indicate responsiveness to high-yielding environments.
-  \item \strong{Factor k > 1:} Represents specific GxE drivers (e.g., drought, heat).
-  \item \strong{The "Peeling" Logic:} For k > 1, the function mathematically subtracts the effects of previous factors. The plot shows the \emph{deviation} from expected performance. A flat line means the variety is stable regarding that specific stressor.
-}
-
-\strong{3. Biplot (\code{type = "biplot"}):}
-A GGE-style overview.
-\itemize{
-  \item \strong{Vectors (Green):} Environments. The angle between vectors approximates their genetic correlation.
-  \item \strong{Points:} Genotypes.
-  \item \strong{Hull (Blue):} The convex hull connects the outermost genotypes. Genotypes on the hull are the "winners" in the sectors formed by perpendicular lines (not drawn to reduce clutter).
-}
-
-\strong{4. Heatmap (\code{type = "heatmap"}):}
-Displays the Genetic Correlation matrix ($C = D^{-1/2} G D^{-1/2}$).
-\itemize{
-  \item \strong{Red:} Negative correlation (Crossover GxE).
-  \item \strong{Blue:} Positive correlation (Consistent ranking).
-  \item \strong{White:} Zero correlation (Independent environments).
-  \item Use this to identify "Mega-Environments" (blocks of blue).
-}
-}
-\examples{
-\dontrun{
-# Standard Selection View
-plot(results, type = "fast", n_label = 5, highlight = c("CheckA", "CheckB"))
-
-# Investigate GxE Drivers (Factor 2)
-plot(results, type = "latent_reg", factor = 2)
-
-# View Network Structure
-plot(results, type = "biplot", factor = c(1, 2))
-plot(results, type = "heatmap")
-}
+It uses **ggplot2** to produce publication-quality figures.
 }
 \seealso{
 \code{\link{fit_fa_model}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}, \code{\link{compare_h2}}

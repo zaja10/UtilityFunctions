@@ -89,6 +89,20 @@ calculate_connectivity <- function(data, x_fac = "Year", y_fac = NULL, trace = "
 #' @param order_by String. Column name to use for sorting the axes (e.g. "Year").
 #' @param ... Additional arguments passed to `image()`.
 #'
+#' Visualise MET Connectivity
+#'
+#' Visualizes the connectivity structure of a MET dataset using a heatmap.
+#' Identify if trials or years are connected by common germplasm.
+#'
+#' @param data A data.frame.
+#' @param x String. Factor for X-axis (e.g. "Year" or "Trial").
+#' @param y String. Factor for Y-axis (Default `NULL` uses x for symmetric).
+#' @param trace String. Variable establishing connection (e.g. "Genotype").
+#' @param method String. "count", "jaccard", or "prop_min".
+#' @param order_by String. Column name to use for sorting the axes (e.g. "Year").
+#' @param ... Additional arguments passed to ggplot.
+#'
+#' @importFrom ggplot2 ggplot aes geom_tile scale_fill_gradient2 labs theme_minimal theme element_text geom_text
 #' @export
 plot_connectivity <- function(data, x = "Year", y = NULL, trace = "Genotype", method = "count", order_by = NULL, ...) {
     mat <- calculate_connectivity(data, x, y, trace, method)
@@ -110,8 +124,14 @@ plot_connectivity <- function(data, x = "Year", y = NULL, trace = "Genotype", me
             if (fac_name == sort_col) {
                 return(current_levels)
             }
+            # Only aggregate if column exists
+            if (!sort_col %in% names(data) || !fac_name %in% names(data)) {
+                return(current_levels)
+            }
+
             meta <- unique(data[, c(fac_name, sort_col)])
             meta <- meta[meta[[fac_name]] %in% current_levels, ]
+            # Robust aggregation
             ord_df <- aggregate(as.formula(paste(sort_col, "~", fac_name)), data = meta, min)
             ordering <- ord_df[order(ord_df[[sort_col]], ord_df[[fac_name]]), fac_name]
             return(as.character(ordering))
@@ -119,32 +139,46 @@ plot_connectivity <- function(data, x = "Year", y = NULL, trace = "Genotype", me
 
         row_ord <- intersect(get_order(x, rownames(mat)), rownames(mat))
         y_name <- if (is.null(y)) x else y
+        # Check if y column exists in data before trying to order by it (might be same as x)
         col_ord <- intersect(get_order(y_name, colnames(mat)), colnames(mat))
+
         mat <- mat[row_ord, col_ord, drop = FALSE]
     }
 
-    # Plotting
-    mat_rev <- mat[nrow(mat):1, , drop = FALSE]
-    cols <- colorRampPalette(c("white", "aliceblue", "#3498db", "#2c3e50"))(20)
+    # Reshape for ggplot (Base R melt)
+    df_long <- as.data.frame(as.table(mat))
+    names(df_long) <- c("X", "Y", "Value")
 
-    old_par <- par(no.readonly = TRUE)
-    on.exit(par(old_par))
+    # Enforce Factor ordering from matrix
+    df_long$X <- factor(df_long$X, levels = rownames(mat))
+    df_long$Y <- factor(df_long$Y, levels = colnames(mat))
 
-    par(mar = c(5, 5, 4, 3))
-    image(1:ncol(mat_rev), 1:nrow(mat_rev), t(mat_rev),
-        axes = FALSE, col = cols, xlab = ifelse(is.null(y) || x == y, x, y), ylab = x,
-        main = paste("Connectivity by", trace)
-    )
+    p <- ggplot2::ggplot(df_long, ggplot2::aes(x = .data$Y, y = .data$X, fill = .data$Value)) +
+        ggplot2::geom_tile(color = "white") +
+        ggplot2::scale_fill_gradient2(low = "white", high = "steelblue", mid = "aliceblue", midpoint = max(mat) / 10) +
+        ggplot2::labs(
+            title = paste("Connectivity by", trace),
+            subtitle = paste("Method:", method),
+            x = ifelse(is.null(y) || x == y, x, y),
+            y = x,
+            fill = "Score"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+            axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 8),
+            axis.text.y = ggplot2::element_text(size = 8)
+        )
 
-    axis(1, at = 1:ncol(mat_rev), labels = colnames(mat_rev), las = 2, cex.axis = 0.7)
-    axis(2, at = 1:nrow(mat_rev), labels = rownames(mat_rev), las = 2, cex.axis = 0.7)
-    box()
-
+    # Add text labels if small
     if (nrow(mat) < 20 && ncol(mat) < 20) {
-        grid_x <- slice.index(mat_rev, 2)
-        grid_y <- slice.index(mat_rev, 1)
-        text(grid_x, grid_y, labels = mat_rev, cex = 0.7, col = ifelse(mat_rev > max(mat) / 2, "white", "black"))
+        # Contrast color logic
+        p <- p + ggplot2::geom_text(ggplot2::aes(label = round(Value, 1)),
+            color = ifelse(df_long$Value > max(df_long$Value) / 2, "white", "black"),
+            size = 3
+        )
     }
+
+    return(p)
 }
 
 #' Check Trial Network Connectivity (Wrapper)

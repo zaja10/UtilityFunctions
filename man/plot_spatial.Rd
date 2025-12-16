@@ -9,15 +9,12 @@ plot_spatial(input, row = "Row", col = "Column", attribute = "Yield")
 \arguments{
 \item{input}{An `asreml` model object OR a `data.frame`.}
 
-\item{row}{Column name for Field Row (default "Row").}
+\item{row}{Column name for Field Row.}
 
-\item{col}{Column name for Field Column (default "Column").}
+\item{col}{Column name for Field Column.}
 
-\item{attribute}{String. What to plot?
-- If input is data.frame: The column name (e.g. "Yield").
-- If input is asreml: "residuals" (default) or "fitted".}
+\item{attribute}{String. What to plot? "Yield", "residuals", "fitted".}
 }
 \description{
 Maps raw data (from dataframe) or residuals (from model) to the physical field layout.
-Visualizes missing data with a distinct background color.
 }

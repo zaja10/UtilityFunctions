@@ -37,10 +37,6 @@
 #'   \item{meta}{Metadata regarding the model structure (k factors, model type).}
 #' }
 #'
-#' @importFrom dplyr %>% mutate select arrange desc bind_rows distinct left_join
-#' @importFrom tidyr pivot_wider pivot_longer
-#' @importFrom stringr str_extract
-#' @importFrom tibble column_to_rownames rownames_to_column
 #' @importFrom stats coef cov2cor sd
 #' @export
 fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
@@ -52,14 +48,35 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     coefs <- coef(model)$random
     coef_names <- rownames(coefs)
 
+    # Clean spaces
     clean_str <- gsub("\\s+", "", classify)
-    parts <- strsplit(clean_str, ":")[[1]]
-    latent_part <- parts[grep("(fa|rr)\\(", parts)]
-    gen_part_raw <- parts[grep("(fa|rr)\\(", parts, invert = TRUE)]
 
+    # Robust Parsing of 'fa(Site,k):Genotype'
+    # Use standard grep to find the fa/rr term
+    term_labels <- attr(terms(as.formula(paste("~", classify))), "term.labels")
+    latent_idx <- grep("(fa|rr)\\(", term_labels)
+    if (length(latent_idx) == 0) {
+        # Fallback to simple split if formula parsing fails
+        parts <- strsplit(clean_str, ":")[[1]]
+        latent_idx <- grep("(fa|rr)\\(", parts)
+        if (length(latent_idx) == 0) stop("Could not identify 'fa()' or 'rr()' term in classify string.")
+        latent_part <- parts[latent_idx[1]]
+        gen_part_raw <- parts[-latent_idx[1]]
+    } else {
+        # Extract purely using regex on the input string to be safe
+        # Assume format fa(Site, k)
+        parts <- strsplit(clean_str, ":")[[1]]
+        latent_part <- parts[grep("(fa|rr)\\(", parts)][1]
+        gen_part_raw <- parts[grep("(fa|rr)\\(", parts, invert = TRUE)][1]
+    }
+
+    # Extract Site Name and K
+    # Matches "fa(SiteName,2)" -> extracts "SiteName" and "2"
     site_col <- sub("(fa|rr)\\(([^,]+),.*", "\\2", latent_part)
     k <- as.numeric(sub(".*,([0-9]+)\\).*", "\\1", latent_part))
 
+    # Extract Genotype Name
+    # Handles "Genotype" or "vm(Genotype, ...)"
     if (grepl("\\(", gen_part_raw)) {
         gen_col_name <- sub("^[a-z]+\\(([^,)]+).*", "\\1", gen_part_raw)
     } else {
@@ -72,132 +89,210 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     message(sprintf("-> Type: %s | Site: '%s' | Factors: %d", model_type, site_col, k))
 
     # 1.1 DATA STATS (REPLICATION) ----------------------------------------------
+    # Use Base R table() instead of dplyr grouping
     data_name <- as.character(model$call$data)
     rep_df <- NULL
+    n_obs_long <- NULL
+
     if (exists(data_name)) {
         raw_df <- get(data_name)
         # Ensure columns exist
         if (all(c(site_col, gen_col_name) %in% names(raw_df))) {
             # Basic Aggregate: Count observations
             counts <- table(raw_df[[gen_col_name]], raw_df[[site_col]])
+
+            # Convert to Long Format (Genotype, Site, n_obs)
             n_obs_long <- as.data.frame(counts)
             colnames(n_obs_long) <- c("Genotype", "Site", "n_obs")
 
             # Replicated status (Overall)
             total_n <- rowSums(counts)
-            rep_df <- data.frame(Genotype = names(total_n), n_obs_total = as.numeric(total_n)) %>%
-                mutate(replicated = n_obs_total > 1)
+            rep_df <- data.frame(
+                Genotype = names(total_n),
+                n_obs_total = as.numeric(total_n),
+                replicated = as.numeric(total_n) > 1,
+                stringsAsFactors = FALSE
+            )
         }
     }
 
     # 1.2 BLUEs (Fixed Effects) -------------------------------------------------
     fixed_part <- coef(model)$fixed
-    blue_rows <- grep(gen_col_name, rownames(fixed_part))
+    # Strict matching to avoid capturing interactions
+    # e.g., if Genotype is "G", avoid matching "Site:G"
+    # ASReml fixed effects usually named "Term_Level"
+    blue_rows <- grep(paste0("^", gen_col_name, "(_|$)"), rownames(fixed_part))
+
     blues_df <- NULL
     if (length(blue_rows) > 0) {
-        # Extract
         b_vals <- fixed_part[blue_rows, 1]
-
-        # Try to get SE if available
         v_fixed <- tryCatch(sqrt(model$vcoeff$fixed[blue_rows]), error = function(e) rep(NA, length(b_vals)))
 
-        # Labels: Remove "Genotype_" prefix if present
-        # Usually ASReml output is "Genotype_A" or "GenotypeA" depending on factor
-        # We try to strip everything before the level name
-        # Heuristic: Remove the column name
+        # Clean Genotype Names
         g_names <- sub(paste0(".*", gen_col_name, "(_|)?"), "", rownames(fixed_part)[blue_rows])
 
-        blues_df <- data.frame(Genotype = g_names, BLUE = b_vals, BLUE_SE = v_fixed)
+        blues_df <- data.frame(
+            Genotype = g_names,
+            BLUE = b_vals,
+            BLUE_SE = v_fixed,
+            stringsAsFactors = FALSE
+        )
 
-        # Center BLUEs (as requested)
+        # Center BLUEs
         blues_df$BLUE <- blues_df$BLUE - mean(blues_df$BLUE, na.rm = TRUE)
     }
 
     # 2. IDENTIFY PREFIX --------------------------------------------------------
     actual_term_prefix <- NULL
     if (!is_rr) {
-        # Standard FA
+        # Standard FA: Look for "!var"
+        # Example: "fa(Site, 2)!Site_Level!var" or "fa(Site, 2)!var"
         psi_candidates <- grep(paste0(site_col, ".*!var$"), vc_names, value = TRUE)
         if (length(psi_candidates) == 0) stop(paste("Could not find !var for site:", site_col))
         actual_term_prefix <- strsplit(psi_candidates[1], "!")[[1]][1]
     } else {
-        # Reduced Rank
+        # RR: Look for loadings
         load_candidates <- grep(paste0(site_col, ".*!(rr|fa)[_]?1"), vc_names, value = TRUE)
         if (length(load_candidates) == 0) stop(paste("Could not find RR loadings for site:", site_col))
         actual_term_prefix <- strsplit(load_candidates[1], "!")[[1]][1]
     }
-    term_regex <- gsub("\\(", "\\\\(", actual_term_prefix) %>% gsub("\\)", "\\\\)", .)
+    # term_regex <- gsub("\\(", "\\\\(", actual_term_prefix) %>% gsub("\\)", "\\\\)", .)
+    # No pipe!
+    term_regex <- gsub("\\(", "\\\\(", actual_term_prefix)
+    term_regex <- gsub("\\)", "\\\\)", term_regex)
 
     # 3. LOADINGS ---------------------------------------------------------------
-    lambda_df <- data.frame()
+    # Loop k factors
+    lambda_list <- vector("list", k)
+
     for (i in 1:k) {
         pat <- paste0("^", term_regex, "!.*!(fa|rr)[_]?", i, "$")
         rows <- grep(pat, vc_names)
         if (length(rows) == 0) next
-        tmp <- data.frame(FullTerm = vc_names[rows], Value = vc[rows, "component"], Factor = i) %>%
-            mutate(Site = str_extract(FullTerm, paste0("(?<=", term_regex, "!)(.*?)(?=!(fa|rr)[_]?", i, ")")))
-        lambda_df <- bind_rows(lambda_df, tmp)
+
+        # Extract Site Names using regex capture groups
+        # Pattern: prefix!SITE_NAME!(fa|rr)_i
+        # We replace the prefix and the suffix with empty string to get site
+        # Note: This assumes the Site part is exactly between the first ! and the last !(fa|rr)
+
+        full_terms <- vc_names[rows]
+        vals <- vc[rows, "component"]
+
+        # Robust extraction
+        # Remove prefix
+        temp <- sub(paste0("^", term_regex, "!"), "", full_terms)
+        # Remove suffix
+        sites <- sub(paste0("!(fa|rr)[_]?", i, "$"), "", temp)
+
+        lambda_list[[i]] <- data.frame(
+            Site = sites,
+            Value = vals,
+            Factor = i,
+            stringsAsFactors = FALSE
+        )
     }
-    if (nrow(lambda_df) == 0) stop("No loadings found.")
-    lambda_mat <- lambda_df %>%
-        select(Site, Factor, Value) %>%
-        pivot_wider(names_from = Factor, values_from = Value) %>%
-        column_to_rownames("Site") %>%
-        as.matrix()
+
+    lambda_df <- do.call(rbind, lambda_list)
+    if (is.null(lambda_df) || nrow(lambda_df) == 0) stop("No loadings found.")
+
+    # Pivot to Matrix (Site x Factor)
+    # Base R alternative to pivot_wider: xtabs
+    lambda_mat <- xtabs(Value ~ Site + Factor, data = lambda_df)
+    # Convert 'table' class to pure matrix
+    lambda_mat <- matrix(lambda_mat,
+        nrow = nrow(lambda_mat), ncol = ncol(lambda_mat),
+        dimnames = dimnames(lambda_mat)
+    )
+
+    # Ensure correct column order
+    if (ncol(lambda_mat) < k) {
+        # Pad with 0 if some factors missing (rare)
+        pad <- matrix(0, nrow(lambda_mat), k - ncol(lambda_mat))
+        lambda_mat <- cbind(lambda_mat, pad)
+    }
 
     # 4. PSI (SPECIFIC VARIANCES) -----------------------------------------------
     psi_df <- NULL
     if (!is_rr) {
         psi_rows <- grep(paste0("^", term_regex, "!.*!var$"), vc_names)
-        psi_df <- data.frame(FullTerm = vc_names[psi_rows], Psi = vc[psi_rows, "component"]) %>%
-            mutate(Site = str_extract(FullTerm, paste0("(?<=", term_regex, "!)(.*?)(?=!var)")))
+        full_terms <- vc_names[psi_rows]
+        vals <- vc[psi_rows, "component"]
+
+        # Extract Site
+        temp <- sub(paste0("^", term_regex, "!"), "", full_terms)
+        sites <- sub("!var$", "", temp)
+
+        psi_df <- data.frame(Site = sites, Psi = vals, stringsAsFactors = FALSE)
     } else {
         if (!is.null(psi_term)) {
             message("-> Hunting for specific variances...")
             candidate_rows <- vc_names[!grepl(paste0("^", term_regex, "!"), vc_names)]
             sites_to_find <- rownames(lambda_mat)
-            found_psi <- list()
+
+            found_sites <- c()
+            found_vals <- c()
 
             for (site in sites_to_find) {
-                site_pat <- paste0("(_|!)", site, "(!var)?$")
-                match <- grep(site_pat, candidate_rows, value = TRUE)
-
+                # Look for term ending in !Site or !Site!var or _Site
+                # This is heuristic and might need tuning for complex diag terms
+                match <- grep(site, candidate_rows, fixed = TRUE, value = TRUE)
+                # Filter for var/component
                 if (length(match) > 0) {
+                    # Pick the one that looks like a variance
                     idx <- which(vc_names == match[1])
-                    found_psi[[site]] <- data.frame(Site = site, Psi = vc[idx, "component"])
+                    found_sites <- c(found_sites, site)
+                    found_vals <- c(found_vals, vc[idx, "component"])
                 }
             }
-            if (length(found_psi) > 0) {
-                psi_df <- do.call(rbind, found_psi)
+
+            if (length(found_sites) > 0) {
+                psi_df <- data.frame(Site = found_sites, Psi = found_vals, stringsAsFactors = FALSE)
             } else {
                 stop("Could not find specific variances for your sites.")
             }
         } else {
-            psi_df <- data.frame(Site = rownames(lambda_mat), Psi = 0)
+            psi_df <- data.frame(Site = rownames(lambda_mat), Psi = 0, stringsAsFactors = FALSE)
         }
     }
 
     # 5. SCORES -----------------------------------------------------------------
-    scores_df <- data.frame()
+    scores_list <- vector("list", k)
+
     for (i in 1:k) {
+        # ASReml scores: "Comp_1_Genotype" or "Fac_1_Genotype"
         p1 <- paste0("Comp[_]?", i, ".*", gen_col_name)
         p2 <- paste0("Fac[_]?", i, ".*", gen_col_name)
+
         rows <- unique(c(grep(p1, coef_names), grep(p2, coef_names)))
+
         if (length(rows) > 0) {
-            tmp <- data.frame(FullTerm = coef_names[rows], Value = coefs[rows, 1], Factor = i) %>%
-                mutate(Genotype = sub(paste0(".*", gen_col_name, "[:_]"), "", FullTerm))
-            scores_df <- bind_rows(scores_df, tmp)
+            full_terms <- coef_names[rows]
+            vals <- coefs[rows, 1]
+
+            # Clean Genotype Name
+            # Remove "Comp_1_" prefix and "Genotype" prefix if repeated
+            # Heuristic: Remove everything up to the Genotype column name
+            genos <- sub(paste0(".*", gen_col_name, "[:_]"), "", full_terms)
+
+            scores_list[[i]] <- data.frame(
+                Genotype = genos,
+                Value = vals,
+                Factor = i,
+                stringsAsFactors = FALSE
+            )
         }
     }
+
+    scores_df <- do.call(rbind, scores_list)
     has_scores <- FALSE
     f_mat <- matrix(0, 1, k)
-    if (nrow(scores_df) > 0) {
-        f_mat <- scores_df %>%
-            distinct(Genotype, Factor, .keep_all = T) %>%
-            select(Genotype, Factor, Value) %>%
-            pivot_wider(names_from = Factor, values_from = Value, values_fill = 0) %>%
-            column_to_rownames("Genotype") %>%
-            as.matrix()
+
+    if (!is.null(scores_df) && nrow(scores_df) > 0) {
+        f_mat <- xtabs(Value ~ Genotype + Factor, data = scores_df)
+        f_mat <- matrix(f_mat,
+            nrow = nrow(f_mat), ncol = ncol(f_mat),
+            dimnames = dimnames(f_mat)
+        )
         has_scores <- TRUE
     }
 
@@ -207,10 +302,14 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
         svd_res <- svd(lambda_mat)
         V <- svd_res$v
         lambda_rot <- lambda_mat %*% V
+
+        # Sign convention: Force first element of Fac1 to be positive (or sum positive)
+        # to ensure reproducibility
         if (sum(lambda_rot[, 1]) < 0) {
             lambda_rot[, 1] <- -lambda_rot[, 1]
             V[, 1] <- -V[, 1]
         }
+
         f_rot <- if (has_scores) f_mat %*% V else f_mat
         rot_mat <- V
     } else {
@@ -224,49 +323,76 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     if (length(common_sites) == 0) stop("Site mismatch between Lambda and Psi.")
 
     lam_ord <- lambda_rot[common_sites, , drop = FALSE]
-    psi_ord <- diag(psi_df$Psi[match(common_sites, psi_df$Site)])
+    # Ensure Psi aligned
+    psi_vec <- psi_df$Psi[match(common_sites, psi_df$Site)]
+    psi_ord <- diag(psi_vec)
+
     G_est <- (lam_ord %*% t(lam_ord)) + psi_ord
     C_est <- tryCatch(cov2cor(G_est), error = function(e) G_est)
 
     G_diag <- diag(G_est)
-    vaf_list <- list(Site = common_sites)
+
+    # Calculate VAF
+    vaf_df <- data.frame(Site = common_sites, stringsAsFactors = FALSE)
     total_vaf <- numeric(length(common_sites))
 
     for (i in 1:k) {
         v_fac <- lam_ord[, i]^2
         pct_fac <- ifelse(G_diag > 1e-8, (v_fac / G_diag) * 100, 0)
-        vaf_list[[paste0("VAF_Fac", i)]] <- round(pct_fac, 2)
+        vaf_df[[paste0("VAF_Fac", i)]] <- round(pct_fac, 2)
         total_vaf <- total_vaf + pct_fac
     }
-    vaf_list$Total_VAF <- round(total_vaf, 2)
-    vaf_df <- as.data.frame(vaf_list)
+    vaf_df$Total_VAF <- round(total_vaf, 2)
 
     # 8. FAST INDICES -----------------------------------------------------------
     fast_df <- NULL
     if (has_scores) {
         OP <- f_rot[, 1] * mean(lambda_rot[, 1], na.rm = TRUE)
-        RMSD <- if (k > 1) apply(f_rot[, 2:k, drop = F] %*% t(lambda_rot[, 2:k, drop = F]), 1, function(x) sqrt(mean(x^2))) else rep(0, nrow(f_rot))
-        fast_df <- data.frame(Genotype = rownames(f_rot), OP = OP, RMSD = RMSD) %>% arrange(desc(OP))
+
+        if (k > 1) {
+            # Vectorized RMSD
+            # (Scores_k * Lambda_k') -> Deviation Matrix
+            dev_mat <- f_rot[, 2:k, drop = FALSE] %*% t(lambda_rot[, 2:k, drop = FALSE])
+            RMSD <- sqrt(rowMeans(dev_mat^2))
+        } else {
+            RMSD <- rep(0, nrow(f_rot))
+        }
+
+        fast_df <- data.frame(
+            Genotype = rownames(f_rot),
+            OP = OP,
+            RMSD = RMSD,
+            stringsAsFactors = FALSE
+        )
+        # Sort desc OP
+        fast_df <- fast_df[order(fast_df$OP, decreasing = TRUE), ]
     }
 
     # 9. SITE BLUP RECONSTRUCTION (Regressed) -----------------------------------
     site_blups_long <- NULL
     if (has_scores) {
-        # Formula: G = F %*% L'
-        # This gives the Genetic Value predicted by the Latent Factors for each Site
+        # Prediction: G = F %*% L'
         reg_blups <- f_rot %*% t(lambda_rot)
 
-        # Convert to Long Format
-        site_blups_long <- as.data.frame(reg_blups) %>%
-            tibble::rownames_to_column("Genotype") %>%
-            tidyr::pivot_longer(-Genotype, names_to = "Site", values_to = "Pred_Value")
+        # Convert to Long Format manually
+        # Create vectors for Genotype, Site, and Value
+        genos_vec <- rep(rownames(reg_blups), times = ncol(reg_blups))
+        sites_vec <- rep(colnames(reg_blups), each = nrow(reg_blups))
+        vals_vec <- as.vector(reg_blups)
+
+        site_blups_long <- data.frame(
+            Genotype = genos_vec,
+            Site = sites_vec,
+            Pred_Value = vals_vec,
+            stringsAsFactors = FALSE
+        )
 
         # Merge with N_Obs if available
-        if (exists("n_obs_long")) {
-            # Be careful with Site names matching
-            # lambda_rot rownames are Sites
-            site_blups_long <- site_blups_long %>%
-                dplyr::left_join(n_obs_long, by = c("Genotype", "Site"))
+        if (!is.null(n_obs_long)) {
+            site_blups_long <- merge(site_blups_long, n_obs_long,
+                by = c("Genotype", "Site"),
+                all.x = TRUE
+            )
         }
     }
 
@@ -277,7 +403,9 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
         data_stats = rep_df,
         var_comp = list(psi = psi_df, vaf = vaf_df),
         matrices = list(G = G_est, Cor = C_est),
-        fast = fast_df, rotation_matrix = rot_mat, meta = list(k = k, type = model_type, classify = classify)
+        fast = fast_df,
+        rotation_matrix = rot_mat,
+        meta = list(k = k, type = model_type, classify = classify)
     )
     class(out) <- "fa_model"
     return(out)
@@ -295,6 +423,7 @@ print.fa_model <- function(x, ...) {
     }
     invisible(x)
 }
+
 #' Factor Analytic Selection Tools (FAST)
 #'
 #' Functions to calculate Smith & Cullis (2018) selection indices from a Factor Analytic model.
@@ -335,7 +464,8 @@ calculate_op <- function(model) {
     df <- data.frame(
         Genotype = rownames(sco),
         OP = op,
-        RMSD = rmsd
+        RMSD = rmsd,
+        stringsAsFactors = FALSE
     )
     df <- df[order(df$OP, decreasing = TRUE), ]
 
@@ -458,7 +588,6 @@ plot.fast_selection <- function(x, type = "op_rmsd", ...) {
         abline(v = mean(df$RMSD), col = "red", lty = 2)
     }
 }
-
 
 #' @export
 fa.asreml <- function(...) {
