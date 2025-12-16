@@ -6,6 +6,9 @@
 \usage{
 predict_cross_utility(parents, markers, effects, map, i_sel = 2.06)
 }
+\description{
+Calculates the Usefulness Criterion (UC) for potential crosses between a set of parents.
+}
 \arguments{
 \item{parents}{Character vector of parent IDs to cross (all pairwise combinations will be generated).
 Alternatively, a dataframe with columns "Parent1" and "Parent2".}
@@ -20,7 +23,4 @@ Alternatively, a dataframe with columns "Parent1" and "Parent2".}
 }
 \value{
 A dataframe containing the columns Parent1, Parent2, Mu, Sigma, and UC (Usefulness Criterion).
-}
-\description{
-Calculates the Usefulness Criterion (UC) for potential crosses between a set of parents.
 }
