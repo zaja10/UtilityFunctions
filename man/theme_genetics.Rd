@@ -2,15 +2,19 @@
 % Please edit documentation in R/utils_graphics.R
 \name{theme_genetics}
 \alias{theme_genetics}
-\title{Commercial Publication Theme for ggplot2}
+\title{Standard Genetics Theme}
 \usage{
-theme_genetics(base_size = 12, base_family = "serif")
+theme_genetics(base_size = 12, base_family = "")
 }
 \arguments{
-\item{base_size}{Numeric. Base font size. Default 12.}
+\item{base_size}{Base font size (default 12).}
 
-\item{base_family}{Character. Font family. Default "serif".}
+\item{base_family}{Base font family.}
+}
+\value{
+A ggplot2 theme object.
 }
 \description{
-A clean, serif-based theme suitable for scientific journals and commercial reports.
+A ggplot2 theme optimized for genetics and breeding plots.
+Features clean white background, grid lines for readability, and readable fonts.
 }

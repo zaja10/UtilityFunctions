@@ -10,10 +10,10 @@ prepare_asreml_grm(G, blend = 0.02)
 \item{G}{A symmetric numeric matrix (GRM).}
 
 \item{blend}{Numeric. Amount of identity matrix to blend (0-1) to ensure invertibility.
-Default 0.02 (2% bending).}
+Default 0.02 (2\%).}
 }
 \value{
-A matrix with attribute 'INVERSE' = TRUE.
+A sparse dataframe (Row, Col, Value) with attribute 'INVERSE' = TRUE.
 }
 \description{
 Checks a Genomic Relationship Matrix (GRM) for singularity, bends it if necessary,

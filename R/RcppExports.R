@@ -11,8 +11,7 @@
 #' @param effects NumericVector. Marker effects (a).
 #' @param map NumericVector. Genetic map positions in Morgans.
 #' @param max_dist double. Maximum distance (in Morgans) to calculate
-NULL
-
+#' covariance. Markers further apart are assumed unlinked. Default 3.0.
 #'
 #' @return double. The gametic variance.
 #'
