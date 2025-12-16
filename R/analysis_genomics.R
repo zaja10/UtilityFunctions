@@ -1,7 +1,7 @@
 ﻿#' Predict Cross Utility (Genetic Variance)
 #'
 #' Calculates the expected genetic variance of a biparental cross given
-#' parental genotypes and marker effects.
+#' parental genotypes and marker effects. Enforces map sorting for C++ engine safety.
 #'
 #' @param parents Matrix (2 x M) of parental genotypes (scored 0, 1, 2).
 #' @param effects Vector (M) of marker effects.

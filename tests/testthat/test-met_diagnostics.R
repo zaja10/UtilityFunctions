@@ -40,42 +40,20 @@ test_that("pad_trial_layout handles MET groups", {
     expect_true(is.na(t1_pad$Yield))
 })
 
-test_that("calculate_connectivity returns correct counts", {
-    # 2 Years, 3 Genotypes
-    # Y1: G1, G2
-    # Y2: G2, G3
+
+test_that("check_met_connectivity detects islands", {
+    # Connected set: T1-T2 share G2
+    # Disconnected: T3 has G3 only
     df <- data.frame(
-        Year = c("Y1", "Y1", "Y2", "Y2"),
+        Trial = c("T1", "T1", "T2", "T3"),
         Genotype = c("G1", "G2", "G2", "G3")
     )
 
-    mat <- calculate_connectivity(df, "Year", "Year", "Genotype")
+    res <- check_met_connectivity(df, trial_col = "Trial", gen_col = "Genotype")
 
-    # Diagonal: Total Genotypes per Year
-    expect_equal(mat["Y1", "Y1"], 2)
-    expect_equal(mat["Y2", "Y2"], 2)
-
-    # Off-diagonal: Shared (G2) -> 1
-    expect_equal(mat["Y1", "Y2"], 1)
-
-    # Test Jaccard
-    # Y1 has 2, Y2 has 2. Shared 1. Union = 3. J = 1/3 = 0.333
-    jacc <- calculate_connectivity(df, "Year", "Year", "Genotype", method = "jaccard")
-    expect_equal(jacc["Y1", "Y2"], 1 / 3, tolerance = 1e-4)
-})
-
-test_that("convert_buac_to_tha calculates correctly", {
-    # Wheat: 100 bu/ac -> ~6.725 t/ha
-    y_wheat <- convert_buac_to_tha(100, crop = "wheat")
-    expect_equal(y_wheat, 6.725, tolerance = 1e-2)
-
-    # Corn: 100 bu/ac -> ~6.277 t/ha
-    y_corn <- convert_buac_to_tha(100, crop = "corn")
-    expect_equal(y_corn, 6.277, tolerance = 1e-2)
-
-    # Custom: 50lbs -> 50 * 0.00112... * 100 = 5.604
-    y_cust <- convert_buac_to_tha(100, lbs_per_bu = 50)
-    expect_equal(y_cust, 5.604, tolerance = 1e-2)
+    expect_equal(res$n_clusters, 2)
+    expect_true("T3" %in% res$islands)
+    expect_false("T1" %in% res$islands)
 })
 
 test_that("plot functions run without error", {
@@ -92,7 +70,7 @@ test_that("plot functions run without error", {
 
     # Test Plotting (Run for side effects)
     pdf(NULL) # Sink plot output
-    expect_silent(plot_connectivity(df, x = "Year", trace = "Genotype"))
+    # expect_silent(plot_connectivity(df, x = "Year", trace = "Genotype")) # Deprecated
     expect_silent(plot_met_trend(df, x = "Year", y = "Yield"))
     expect_silent(plot_trial_map(df[df$Trial == "T1", ]))
     dev.off()

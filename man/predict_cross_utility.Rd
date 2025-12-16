@@ -20,5 +20,5 @@ A numeric value representing the expected variance.
 }
 \description{
 Calculates the expected genetic variance of a biparental cross given
-parental genotypes and marker effects.
+parental genotypes and marker effects. Enforces map sorting for C++ engine safety.
 }

@@ -149,7 +149,7 @@ calculate_reliability <- function(model, genotype) {
 
 #' Select Best Spatial Model
 #' @keywords internal
-select_spatial_model <- function(sub_data, trait, genotype, block, resids_list) {
+select_spatial_model <- function(sub_data, trait, genotype, block, resids_list, workspace = "1gb") {
     fixed_form <- as.formula(paste(trait, "~ 1"))
     random_form <- as.formula(paste("~", genotype, "+", block))
 
@@ -164,7 +164,7 @@ select_spatial_model <- function(sub_data, trait, genotype, block, resids_list) 
         amod1 <- try(asreml::asreml(
             fixed = fixed_form, random = random_form, residual = resid_form,
             data = sub_data, na.action = asreml::na.method(x = "include", y = "include"),
-            maxit = 50, trace = FALSE, workspace = "1gb" # Parametrized workspace could be better
+            maxit = 50, trace = FALSE, workspace = workspace # Parametrized workspace
         ), silent = TRUE)
 
         if (!inherits(amod1, "try-error")) {
@@ -176,6 +176,17 @@ select_spatial_model <- function(sub_data, trait, genotype, block, resids_list) 
                     best_bic <- bic
                     best_resid <- resid_model_str
                     best_rel <- calculate_reliability(amod1, genotype)
+                }
+            } else {
+                # Try update once more
+                amod1 <- force_convergence(amod1, max_tries = 3)
+                if (amod1$converge) {
+                    bic <- tryCatch(asreml::infoCriteria(amod1)$BIC, error = function(e) 1e14)
+                    if (bic < best_bic) {
+                        best_bic <- bic
+                        best_resid <- resid_model_str
+                        best_rel <- calculate_reliability(amod1, genotype)
+                    }
                 }
             }
         }
@@ -216,7 +227,7 @@ compute_weights_from_model <- function(model, genotype, threshold = 1e-8) {
 #' Fits a spatial model for a single environment. Used by \code{analyze_single_trial}.
 #'
 #' @keywords internal
-fit_site_model <- function(sub_data, trait, genotype, block, row, col, resids_list, compute_weights = FALSE, weight_threshold = 0.01) {
+fit_site_model <- function(sub_data, trait, genotype, block, row, col, resids_list, compute_weights = FALSE, weight_threshold = 0.01, workspace = "1gb") {
     check_asreml_availability()
 
     if (nrow(sub_data) == 0) {
@@ -227,7 +238,7 @@ fit_site_model <- function(sub_data, trait, genotype, block, row, col, resids_li
     }
 
     # 1. Model Selection
-    selection <- select_spatial_model(sub_data, trait, genotype, block, resids_list)
+    selection <- select_spatial_model(sub_data, trait, genotype, block, resids_list, workspace)
     best_resid <- selection$resid
     best_rel <- selection$rel
 
@@ -240,13 +251,13 @@ fit_site_model <- function(sub_data, trait, genotype, block, row, col, resids_li
     amod2 <- try(asreml::asreml(
         fixed = fixed_final, random = random_final, residual = resid_final,
         data = sub_data, na.action = asreml::na.method(x = "include", y = "include"),
-        trace = FALSE, workspace = "1gb"
+        trace = FALSE, workspace = workspace
     ), silent = TRUE)
 
     if (!inherits(amod2, "try-error")) {
         if (!amod2$converge) amod2 <- try(update(amod2), silent = TRUE)
 
-        blues0 <- try(predict(amod2, classify = genotype, pworkspace = "1gb"), silent = TRUE)
+        blues0 <- try(predict(amod2, classify = genotype, pworkspace = workspace), silent = TRUE)
         if (!inherits(blues0, "try-error")) {
             blues_raw <- blues0$pvals
             out_df <- blues_raw[, c(genotype, "predicted.value", "std.error")]
@@ -295,7 +306,8 @@ analyze_single_trial <- function(data,
                                  rep = "replicate",
                                  parallel = TRUE,
                                  compute_weights = TRUE,
-                                 return_weights = TRUE) {
+                                 return_weights = TRUE,
+                                 workspace = "1gb") {
     check_asreml_availability()
 
     # Parallel Backend Check
@@ -350,11 +362,11 @@ analyze_single_trial <- function(data,
 
     if (parallel) {
         results_list <- foreach(sub = study_data_list, .packages = c("asreml", "MASS", "Matrix", "UtilityFunctions")) %dopar% {
-            fit_site_model(sub, trait, genotype, block, row, col, resids_to_test, compute_weights)
+            fit_site_model(sub, trait, genotype, block, row, col, resids_to_test, compute_weights, workspace = workspace)
         }
     } else {
         results_list <- lapply(study_data_list, function(sub) {
-            fit_site_model(sub, trait, genotype, block, row, col, resids_to_test, compute_weights)
+            fit_site_model(sub, trait, genotype, block, row, col, resids_to_test, compute_weights, workspace = workspace)
         })
     }
 
@@ -375,8 +387,82 @@ analyze_single_trial <- function(data,
     final_blues <- do.call(rbind, blues_list)
 
     if (return_weights) {
-        return(list(blues = final_blues, weights = weights_list))
+        structure(list(blues = final_blues, weights = weights_list), class = c("spatial_results", "list"))
     } else {
-        return(final_blues)
+        structure(final_blues, class = c("spatial_results", "data.frame"))
     }
+}
+
+#' Summary of Spatial Analysis Results
+#'
+#' Provides a dashboard-style summary of the spatial analysis, including
+#' convergence rates, model selection frequencies, and reliability statistics.
+#'
+#' @param object An object of class \code{spatial_results} returned by \code{analyze_single_trial}.
+#' @param ... Additional arguments ignored.
+#' @return A list containing summary statistics (invisibly).
+#' @export
+summary.spatial_results <- function(object, ...) {
+    # Extract BLUEs dataframe
+    if (inherits(object, "data.frame")) {
+        blues <- object
+    } else {
+        blues <- object$blues
+    }
+
+    # Check if necessary columns exist
+    req_cols <- c("study", "germplasmName", "residmod", "conv", "rel")
+    if (!all(req_cols %in% colnames(blues))) {
+        warning("Object does not contain standard spatial analysis columns. Standard summary skipped.")
+        return(summary.default(object))
+    }
+
+    # 1. Trial Counts
+    n_trials <- length(unique(blues$study))
+    n_geno <- length(unique(blues$germplasmName))
+
+    # 2. Convergence
+    # Collapse to one row per trial to check convergence status
+    trial_stats <- aggregate(cbind(conv, rel) ~ study + residmod, data = blues, FUN = function(x) head(x, 1))
+    # aggregate returns numeric for TRUE/FALSE sometimes, ensure logical checking
+    n_conv <- sum(trial_stats$conv >= 1, na.rm = TRUE)
+    pct_conv <- (n_conv / n_trials) * 100
+
+    # 3. Model Frequency
+    model_counts <- table(trial_stats$residmod)
+
+    # 4. Reliability
+    mean_rel <- mean(as.numeric(blues$rel), na.rm = TRUE)
+
+    # Output List
+    out <- list(
+        n_trials = n_trials,
+        n_geno = n_geno,
+        n_conv = n_conv,
+        pct_conv = pct_conv,
+        model_counts = model_counts,
+        mean_rel = mean_rel
+    )
+
+    class(out) <- "summary.spatial_results"
+    return(out)
+}
+
+#' Print Summary of Spatial Analysis
+#' @param x A summary object.
+#' @param ... Ignored.
+#' @export
+print.summary.spatial_results <- function(x, ...) {
+    cat("========================================================\n")
+    cat("           SPATIAL ANALYSIS DASHBOARD                   \n")
+    cat("========================================================\n")
+    cat(sprintf("Trials Analyzed:   %d\n", x$n_trials))
+    cat(sprintf("Genotypes:         %d\n", x$n_geno))
+    cat("--------------------------------------------------------\n")
+    cat(sprintf("Converged:         %d (%.1f%%)\n", x$n_conv, x$pct_conv))
+    cat(sprintf("Mean Reliability:  %.3f\n", x$mean_rel))
+    cat("--------------------------------------------------------\n")
+    cat("Spatial Models Selected:\n")
+    print(x$model_counts)
+    cat("========================================================\n")
 }

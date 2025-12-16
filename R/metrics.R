@@ -612,3 +612,25 @@ calculate_mt_index <- function(fa_objects_list, weights, penalties) {
 
     return(final_df)
 }
+
+#' Predict Genetic Gain (Breeder's Equation)
+#'
+#' Estimates expected genetic gain ($R$) using the Breeder's Equation:
+#' \eqn{R = i \times r \times \sigma_g}
+#'
+#' @param selection_intensity Numeric. Standardized selection intensity ($i$). Default 1.755 (10%% selected).
+#' @param reliability Numeric. Reliability/Accuracy of the selection index ($r^2$ or $h^2$). If accuracy ($r$) is desired, use sqrt(rel).
+#' @param genetic_variance Numeric. Additive genetic variance ($\sigma_g^2$).
+#' @return Numeric. Expected gain in units of the trait.
+#' @export
+predict_gain <- function(selection_intensity = 1.755, reliability, genetic_variance) {
+    # Accuracy = sqrt(Reliability)
+    acc <- sqrt(reliability)
+
+    # Genetic SD
+    sigma_g <- sqrt(genetic_variance)
+
+    # R = i * r * sigma_g
+    R <- selection_intensity * acc * sigma_g
+    return(R)
+}

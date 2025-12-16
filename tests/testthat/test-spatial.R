@@ -33,21 +33,6 @@ test_that("pad_trial_layout handles MET groups", {
     expect_true(is.na(t1_pad$Yield))
 })
 
-test_that("calculate_connectivity returns correct counts", {
-    df <- data.frame(
-        Year = c("Y1", "Y1", "Y2", "Y2"),
-        Genotype = c("G1", "G2", "G2", "G3")
-    )
-
-    mat <- calculate_connectivity(df, "Year", "Year", "Genotype")
-
-    expect_equal(mat["Y1", "Y1"], 2)
-    expect_equal(mat["Y1", "Y2"], 1)
-
-    jacc <- calculate_connectivity(df, "Year", "Year", "Genotype", method = "jaccard")
-    expect_equal(jacc["Y1", "Y2"], 1 / 3, tolerance = 1e-4)
-})
-
 test_that("convert_buac_to_tha calculates correctly", {
     y_wheat <- convert_buac_to_tha(100, crop = "wheat")
     expect_equal(y_wheat, 6.725, tolerance = 1e-2)
@@ -56,16 +41,14 @@ test_that("convert_buac_to_tha calculates correctly", {
 test_that("plot functions run without error", {
     set.seed(123)
     df <- data.frame(
-        Year = rep(2020:2022, each = 20),
-        Genotype = sample(LETTERS[1:5], 60, replace = TRUE),
-        Yield = rnorm(60, 5, 2),
-        Row = rep(1:5, 12),
-        Column = rep(1:4, 15),
-        Trial = rep(c("T1", "T2", "T3"), each = 20)
+        Year = rep(c("2020", "2021"), each = 10),
+        Yield = rnorm(20),
+        Trial = rep(c("T1", "T2"), each = 10),
+        Long = rnorm(20),
+        Lat = rnorm(20),
+        Genotype = rep(c("A", "B"), 10)
     )
 
-    p1 <- plot_connectivity(df, x = "Year", trace = "Genotype")
-    expect_s3_class(p1, "ggplot")
 
     p2 <- plot_met_trend(df, x = "Year", y = "Yield")
     expect_s3_class(p2, "ggplot")

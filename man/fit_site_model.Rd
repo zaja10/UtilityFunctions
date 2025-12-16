@@ -13,7 +13,8 @@ fit_site_model(
   col,
   resids_list,
   compute_weights = FALSE,
-  weight_threshold = 0.01
+  weight_threshold = 0.01,
+  workspace = "1gb"
 )
 }
 \description{

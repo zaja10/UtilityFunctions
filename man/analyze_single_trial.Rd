@@ -15,7 +15,8 @@ analyze_single_trial(
   rep = "replicate",
   parallel = TRUE,
   compute_weights = TRUE,
-  return_weights = TRUE
+  return_weights = TRUE,
+  workspace = "1gb"
 )
 }
 \arguments{

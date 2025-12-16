@@ -4,7 +4,14 @@
 \alias{select_spatial_model}
 \title{Select Best Spatial Model}
 \usage{
-select_spatial_model(sub_data, trait, genotype, block, resids_list)
+select_spatial_model(
+  sub_data,
+  trait,
+  genotype,
+  block,
+  resids_list,
+  workspace = "1gb"
+)
 }
 \description{
 Select Best Spatial Model
