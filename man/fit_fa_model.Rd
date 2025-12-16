@@ -9,35 +9,15 @@ fit_fa_model(model, classify, psi_term = NULL, rotate = TRUE)
 \arguments{
 \item{model}{A fitted object of class \code{asreml}.}
 
-\item{classify}{A character string defining the main latent model term.
-Must match the ASReml syntax used in the model call.
-\itemize{
-  \item Standard FA: \code{"fa(Site, 2):Genotype"}
-  \item Genomic FA: \code{"fa(Site, 2):vm(Genotype, grm)"}
-  \item Reduced Rank: \code{"rr(Site, 2):Genotype"}
-}}
+\item{classify}{Character. The term to extract. E.g., \code{"fa(Site, 2):Genotype"}.}
 
-\item{psi_term}{A character string defining the specific variance term (Optional).
-Required only for **Reduced Rank** models where the diagonal variance is fitted
-separately (e.g., \code{"diag(Site):Genotype"}). If NULL for an RR model,
-specific variances are assumed to be zero.}
+\item{psi_term}{Character (Optional). For RR models, the term containing specific variances.
+E.g., \code{"diag(Site):Genotype"}. If NULL for RR, attempts automatic detection.}
 
-\item{rotate}{Logical. If \code{TRUE} (default), loadings and scores are rotated
-to the Principal Component solution via SVD. If \code{FALSE}, raw parameters
-are returned (warning: FAST indices may be invalid without rotation).}
+\item{rotate}{Logical. Perform SVD rotation to PC solution? Default TRUE.}
 }
 \value{
-An object of class \code{fa_model} containing:
-\describe{
-  \item{loadings}{A list containing \code{raw} and \code{rotated} site loading matrices.}
-  \item{scores}{A list containing \code{raw}, \code{rotated} genotype scores, and \code{blups_in_met} (the Site-specific predicted values reconstructed from the latent factors).}
-  \item{blues}{A dataframe of the centered BLUEs (Fixed Effects) for the Genotype, if fitted.}
-  \item{data_stats}{A dataframe containing replication statistics (\code{n_obs}, \code{replicated}) derived from the original dataset.}
-  \item{var_comp}{A list containing the extracted specific variances (\code{psi}) and a table of Variance Accounted For (\code{vaf}).}
-  \item{matrices}{The estimated Genetic Covariance (\code{G}) and Genetic Correlation (\code{Cor}) matrices.}
-  \item{fast}{A dataframe containing the FAST indices: Overall Performance (\code{OP}) and Stability (\code{RMSD}).}
-  \item{meta}{Metadata regarding the model structure (k factors, model type).}
-}
+An object of class \code{fa_model}.
 }
 \description{
 The primary engine of the toolkit. This function parses a fitted ASReml-R model object to
