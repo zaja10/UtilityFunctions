@@ -11,13 +11,13 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   } else if (type == "latent_reg") {
     .plot_reg(x, factor, highlight, n_label)
   } else if (type == "biplot") {
-    .plot_biplot(x, if (is.null(factor)) c(1, 2) else factor, highlight)
+    .plot_biplot_static(x, highlight, if (is.null(factor)) c(1, 2) else factor)
   } else if (type == "vaf") {
     .plot_vaf(x)
   } else if (type == "d_opt") {
     .plot_dopt(calculate_d_optimality(x))
   } else if (type == "diff") {
-    .plot_diff(calculate_i_classes(x, if (is.null(factor)) 2 else factor), n_label, highlight)
+    .plot_diff_generalized(x, ...)
   } else {
     stop("Unknown type.")
   }
@@ -182,50 +182,52 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     labs(title = "Latent Regression", x = paste(grp_name, "Loading"), y = "Interaction Deviation")
 }
 
-.plot_biplot <- function(x, fac, h) {
-  if (is.null(x$scores)) stop("No Genotype scores available.")
+.plot_biplot_static <- function(x, highlight = NULL, fac = c(1, 2)) {
+  if (is.null(x$scores$rotated)) stop("No scores.")
 
   L <- x$loadings$rotated[, fac]
   S <- x$scores$rotated[, fac]
+  var_pct <- x$meta$var_explained[fac]
 
-  df_scores <- as.data.frame(S)
-  colnames(df_scores) <- c("X", "Y")
-  df_scores$Genotype <- rownames(S)
-  df_scores$Type <- "Normal"
-  if (!is.null(h)) df_scores$Type[df_scores$Genotype %in% h] <- "Highlight"
+  # Smart Scaling: Fit Loadings inside 85% of Score range
+  max_s <- max(abs(S))
+  max_l <- max(abs(L))
+  scale_f <- (max_s / max_l) * 0.85
 
-  sf <- max(abs(S)) / max(abs(L)) * 0.8
-  df_load <- as.data.frame(L * sf)
-  colnames(df_load) <- c("X", "Y")
-  df_load$Label <- rownames(L) # Agnostic
+  df_scr <- data.frame(X = S[, 1], Y = S[, 2], ID = rownames(S), Type = "Genotype")
+  df_lod <- data.frame(X = L[, 1] * scale_f, Y = L[, 2] * scale_f, ID = rownames(L), Type = "Site")
 
-  hull_idx <- chull(df_scores$X, df_scores$Y)
-
-  p <- ggplot(df_scores, aes(x = X, y = Y)) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
-    geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
-    # Convex hull for context
-    # geom_polygon(data = df_scores[hull_idx, ], fill = NA, color = "navy", linetype = "dashed") +
-    # Removed polygon to cleaner look or use it if requested
-
-    geom_point(aes(fill = Type, size = Type, shape = Type), color = "black") +
-    scale_fill_manual(values = c("Highlight" = "red", "Normal" = "grey90")) +
-    scale_shape_manual(values = c("Highlight" = 23, "Normal" = 21)) +
-    scale_size_manual(values = c("Highlight" = 3, "Normal" = 2)) +
-    geom_segment(
-      data = df_load, aes(x = 0, y = 0, xend = X, yend = Y),
-      arrow = arrow(length = unit(0.2, "cm")), color = "darkgreen"
-    ) +
-    geom_text(data = df_load, aes(label = Label), color = "darkgreen", size = 3, hjust = -0.2) +
-    labs(x = paste("Factor", fac[1]), y = paste("Factor", fac[2]), title = "Biplot") +
-    theme_genetics() +
-    coord_fixed()
-
-  if (requireNamespace("ggrepel", quietly = TRUE)) {
-    high <- df_scores[df_scores$Type == "Highlight", ]
-    if (nrow(high) > 0) p <- p + ggrepel::geom_text_repel(data = high, aes(label = Genotype))
+  # Highlight Logic
+  df_scr$Alpha <- 0.4
+  df_scr$Color <- "grey50"
+  if (!is.null(highlight)) {
+    hits <- df_scr$ID %in% highlight
+    df_scr$Alpha[hits] <- 1
+    df_scr$Color[hits] <- "red"
+    df_scr <- rbind(df_scr[!hits, ], df_scr[hits, ]) # Reorder
   }
-  return(p)
+
+  ggplot() +
+    # Scores
+    geom_point(data = df_scr, aes(X, Y), color = df_scr$Color, alpha = df_scr$Alpha) +
+    # Loadings (Arrows)
+    geom_segment(
+      data = df_lod, aes(x = 0, y = 0, xend = X, yend = Y),
+      arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
+      color = "#2c3e50", size = 1
+    ) + # Thicker, Darker
+    # Labels (Repel)
+    ggrepel::geom_text_repel(
+      data = df_lod, aes(X, Y, label = ID),
+      fontface = "bold", size = 3.5, color = "#2c3e50"
+    ) +
+    labs(
+      x = paste0("Factor ", fac[1], " (", round(var_pct[1], 1), "%)"),
+      y = paste0("Factor ", fac[2], " (", round(var_pct[2], 1), "%)"),
+      title = "FA Biplot"
+    ) +
+    coord_fixed() + # Fix Aspect Ratio
+    theme_minimal()
 }
 
 .plot_vaf <- function(x) {
@@ -283,36 +285,17 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     theme_minimal()
 }
 
-.plot_diff <- function(res, n, h) {
-  df <- res$gen_effects
-  df <- na.omit(df)
+.plot_diff_generalized <- function(x, ...) {
+  # Calculate classes
+  classes <- calculate_i_classes(x)
+  df <- classes$geno_classes
 
-  top_n <- head(df$Genotype, n)
-  bot_n <- tail(df$Genotype, n)
-  tgt <- unique(c(top_n, bot_n, h))
-
-  sub_df <- df[df$Genotype %in% tgt, ]
-
-  plot_df <- data.frame(
-    Genotype = rep(sub_df$Genotype, 2),
-    Class = rep(c("Pred_Neg", "Pred_Pos"), each = nrow(sub_df)),
-    Value = c(sub_df$Pred_Neg, sub_df$Pred_Pos),
-    stringsAsFactors = FALSE
-  )
-
-  plot_df$Class <- factor(plot_df$Class, levels = c("Pred_Neg", "Pred_Pos"), labels = c("Class (-)", "Class (+)"))
-  plot_df$Type <- "Normal"
-  if (!is.null(h)) plot_df$Type[plot_df$Genotype %in% h] <- "Highlight"
-
-  ggplot(plot_df, aes(x = Class, y = Value, group = Genotype, color = Type)) +
-    geom_line(aes(linewidth = Type)) +
-    geom_point() +
-    geom_text(data = plot_df[plot_df$Class == "Class (-)", ], aes(label = Genotype), hjust = 1.1, size = 3) +
-    scale_color_manual(values = c("Highlight" = "red", "Normal" = "grey50")) +
-    scale_linewidth_manual(values = c("Highlight" = 1, "Normal" = 0.5)) +
-    theme_genetics() +
-    labs(title = "Crossover Interaction", x = NULL, y = "Genetic Value") +
-    theme(legend.position = "none")
+  # Plotting logic for k classes
+  # Simply bar plot of counts or similar for now
+  ggplot(df, aes(x = Class)) +
+    geom_bar(fill = "steelblue") +
+    labs(title = "Genotype Interaction Classes", x = "Sign Pattern (Factors 1..k)") +
+    theme_minimal()
 }
 
 # Export these legacy/helper plotters

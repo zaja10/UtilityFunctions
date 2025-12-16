@@ -701,3 +701,41 @@ summary.fa_model <- function(object, ...) {
 
     invisible(object)
 }
+
+#' Calculate Interaction Classes (Generalized)
+#'
+#' Classifies environments/genotypes based on the sign of their Factor Loadings/Scores.
+#' Supports any number of factors (k).
+#'
+#' @param object An object of class \code{fa_model}.
+#' @return A list with site classes and genotype classes.
+#' @export
+calculate_i_classes <- function(object) {
+    lam <- object$loadings$rotated
+    sco <- object$scores$rotated
+    k <- object$meta$k
+
+    # Helper to convert sign vector to string (e.g. "+-+")
+    get_sign_class <- function(mat) {
+        apply(mat, 1, function(x) paste0(ifelse(x > 0, "+", "-"), collapse = ""))
+    }
+
+    site_classes <- get_sign_class(lam)
+    geno_classes <- if (!is.null(sco)) get_sign_class(sco) else NULL
+
+    # Calculate Mean Performance of each class
+    # (Optional: You could calc mean yield per class if needed)
+
+    return(list(
+        site_classes = data.frame(Group = names(site_classes), Class = site_classes),
+        geno_classes = if (!is.null(geno_classes)) data.frame(Genotype = names(geno_classes), Class = geno_classes) else NULL
+    ))
+}
+
+#' Calculate Reliability (Deprecated)
+#'
+#' @export
+calculate_reliability <- function(...) {
+    cli::cli_alert_warning("This function is deprecated/unreliable and will be removed.")
+    return(NULL)
+}

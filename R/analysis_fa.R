@@ -44,364 +44,180 @@
 fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     cli::cli_h1("Extracting FA/RR Model Parameters")
 
-    # 1. SETUP & PARSING --------------------------------------------------------
     if (!inherits(model, "asreml")) cli::cli_abort("Object must be of class {.cls asreml}.")
 
-    # Robust extraction (Handle mocks that already have varcomp vs real objects needing summary)
-    vc <- if (!is.null(model$varcomp)) model$varcomp else tryCatch(summary(model)$varcomp, error = function(e) NULL)
-
-    if (is.null(vc)) cli::cli_abort("Could not extract variance components from model.")
-
-
+    vc <- summary(model)$varcomp
     vc_names <- rownames(vc)
     coefs <- coef(model)$random
     coef_names <- rownames(coefs)
 
-    # Initialize optional stats
-    n_obs_long <- NULL
-    rep_df <- NULL
-    blues_df <- NULL
-
-    # Robust Term Parsing
+    # 1. Parsing Logic ----------------------------------------------------------
     clean_str <- gsub("\\s+", "", classify)
+    # Extract k (number of factors)
+    # Look for number in parens after fa or rr: fa(Site,2) -> 2
+    k_match <- regmatches(clean_str, regexec("(fa|rr)\\([^,]+,([0-9]+)\\)", clean_str))
+    if (length(k_match[[1]]) < 3) cli::cli_abort("Could not determine 'k' from classify string.")
+    k <- as.numeric(k_match[[1]][3])
 
-    # Split interaction: "fa(Site,2)" and "Genotype"
-    # Logic: finding the part with "fa(" or "rr("
+    # Extract Group (Site/Experiment)
+    # Parsing "fa(Experiment,3)" -> "Experiment"
+    group_match <- regmatches(clean_str, regexec("(fa|rr)\\(([^,]+),", clean_str))
+    group_var <- group_match[[1]][3]
+
+    # Extract Genotype
     parts <- strsplit(clean_str, ":")[[1]]
-    latent_idx <- grep("(fa|rr)\\(", parts)
-
-    if (length(latent_idx) == 0) cli::cli_abort("No 'fa()' or 'rr()' term found in {.arg classify}.")
-
-    latent_part <- parts[latent_idx[1]] # e.g., "fa(Site,2)"
-    gen_part_raw <- parts[-latent_idx[1]] # e.g., "vm(Genotype,G)"
-
-    # Extract Group Name (Site/Trait) and k factors
-    # Matches "fa(Name, k)"
-    group_var <- sub("(fa|rr)\\(([^,]+),.*", "\\2", latent_part)
-    k_str <- sub(".*,([0-9]+)\\).*", "\\1", latent_part)
-    k <- as.numeric(k_str)
-
-    if (is.na(k)) cli::cli_abort("Could not determine number of factors (k) from string.")
-
-    # Extract Genotype Name (Handle vm(), ide(), etc.)
-    # Removes outer function wrapper if present
-    if (length(gen_part_raw) > 0) {
-        if (grepl("\\(", gen_part_raw)) {
-            gen_col_name <- sub("^[a-z]+\\(([^,)]+).*", "\\1", gen_part_raw)
-        } else {
-            gen_col_name <- gen_part_raw
-        }
-    } else {
-        # Fallback if classify is just "fa(Site,2)" (rare but possible in simple structures)
-        gen_col_name <- "Genotype"
-    }
+    gen_part <- parts[!grepl("(fa|rr)\\(", parts)]
+    # Strip vm() or ide() wrapper if present
+    gen_col_name <- gsub("^[a-z]+\\(([^,]+).*\\)$", "\\1", gen_part)
+    if (length(gen_col_name) == 0) gen_col_name <- "Genotype" # Fallback
 
     is_rr <- grepl("rr\\(", clean_str)
-    type_lbl <- if (is_rr) "Reduced Rank (RR)" else "Factor Analytic (FA)"
 
-    cli::cli_alert_info("Model: {type_lbl} | Group: {.val {group_var}} | Genotype: {.val {gen_col_name}} | k={k}")
-
-    # 2. IDENTIFY ASREML TERM PREFIX --------------------------------------------
-    # ASReml outputs variance components with prefixes like "fa(Site,2)!Site!..."
-    # We need to find the exact string ASReml uses.
-
-    term_regex <- NULL
-
-    if (!is_rr) {
-        # Standard FA: Look for a variance term ending in !var
-        # e.g., "fa(Site, 2)!Site!var"
-        pat <- paste0(group_var, ".*!var$")
-        candidates <- grep(pat, vc_names, value = TRUE)
-
-        if (length(candidates) == 0) {
-            # Try looser match
-            candidates <- grep("!var$", vc_names, value = TRUE)
-            # Filter for group_var
-            candidates <- candidates[grepl(group_var, candidates)]
-        }
-
-        if (length(candidates) > 0) {
-            # Extract prefix: "fa(Site, 2)" from "fa(Site, 2)!SiteA!var"
-            # Everything before the first "!"
-            term_regex <- strsplit(candidates[1], "!")[[1]][1]
-        }
-    } else {
-        # RR: Look for loading term 1
-        # e.g., "rr(Site, 2)!Site!fa_1"
-        pat <- paste0(group_var, ".*!(fa|rr)[_]?1$")
-        candidates <- grep(pat, vc_names, value = TRUE)
-        if (length(candidates) > 0) {
-            # Everything before the first "!"
-            term_regex <- strsplit(candidates[1], "!")[[1]][1]
-        }
-    }
-
-    if (is.null(term_regex)) cli::cli_abort("Could not locate model terms in varcomp output. Check spelling of {.arg classify}.")
-
-    # Escape regex special chars for subsequent searches
-    term_regex_safe <- gsub("\\(", "\\\\(", term_regex)
-    term_regex_safe <- gsub("\\)", "\\\\)", term_regex_safe)
-
-    # 3. EXTRACT LOADINGS (Lambda) ----------------------------------------------
+    # 2. Extract Loadings (Lambda) ----------------------------------------------
     lambda_list <- vector("list", k)
 
+    # Regex to find loadings: must contain group_var and end in fa_i/rr_i
+    # e.g. "fa(Experiment, 3):Genotype!YT_Neo_22!fa1"
     for (i in 1:k) {
-        # Pattern: Prefix ! GroupLevel ! fa_i
-        # Note: Sometimes ASReml uses "fa_1", sometimes "rr_1"
-        pat <- paste0("^", term_regex_safe, "!.*!(fa|rr)[_]?", i, "$")
-        rows <- grep(pat, vc_names)
+        # Pattern: contains group name, ends in !fa1 or !rr1 or !comp1
+        pat <- paste0("!((fa|rr|comp)[_]?", i, ")$")
+        rows <- grep(pat, vc_names, ignore.case = TRUE)
 
         if (length(rows) == 0) next
 
-        full_terms <- vc_names[rows]
         vals <- vc[rows, "component"]
+        full_names <- vc_names[rows]
 
-        # Extract Group Levels (Site Names)
-        # Remove prefix and suffix
-        temp <- sub(paste0("^", term_regex_safe, "!"), "", full_terms)
-        grps <- sub("!(fa|rr)[_]?[0-9]+$", "", temp)
+        # Extract the Site Name from the middle of the string
+        # Strategy: Remove the known suffix (!fa1) and the known prefix (fa(...):Genotype!)
+        # But prefix is variable. Safer strategy: Extract the token between the last two '!'
 
-        lambda_list[[i]] <- data.frame(
-            Group = grps,
-            Value = vals,
-            Factor = i,
-            stringsAsFactors = FALSE
-        )
+        # Split by '!'
+        tokens <- strsplit(full_names, "!")
+        # The site name is usually the second to last token (before fa1)
+        sites <- sapply(tokens, function(x) x[length(x) - 1])
+
+        lambda_list[[i]] <- data.frame(Group = sites, Value = vals, Factor = i)
     }
 
     lambda_df <- do.call(rbind, lambda_list)
-    if (is.null(lambda_df) || nrow(lambda_df) == 0) cli::cli_abort("No loadings extracted. Check model convergence.")
+    if (is.null(lambda_df)) cli::cli_abort("No loadings found. Check syntax.")
 
-    # Matrix Conversion (Base R)
     lambda_mat <- xtabs(Value ~ Group + Factor, data = lambda_df)
-    class(lambda_mat) <- "matrix" # strip xtabs class
+    class(lambda_mat) <- "matrix"
 
-    # Ensure all factors present
-    if (ncol(lambda_mat) < k) {
-        pad <- matrix(0, nrow(lambda_mat), k - ncol(lambda_mat))
-        lambda_mat <- cbind(lambda_mat, pad)
-    }
-
-    # 4. EXTRACT SPECIFIC VARIANCES (Psi) ---------------------------------------
+    # 3. Extract Specific Variances (Psi) - IMPROVED ----------------------------
     psi_df <- NULL
 
-    if (!is_rr) {
-        # FA: Psi is internal
-        pat <- paste0("^", term_regex_safe, "!.*!var$")
-        rows <- grep(pat, vc_names)
-        full_terms <- vc_names[rows]
-        vals <- vc[rows, "component"]
+    # Heuristic: Look for rows ending in !var that contain the Site names found in Lambda
+    # This avoids guessing the prefix structure.
+    var_rows <- grep("!var$", vc_names, value = TRUE)
 
-        temp <- sub(paste0("^", term_regex_safe, "!"), "", full_terms)
-        grps <- sub("!var$", "", temp)
+    # Filter to only those that contain our sites
+    target_sites <- rownames(lambda_mat)
 
-        psi_df <- data.frame(Group = grps, Psi = vals, stringsAsFactors = FALSE)
-    } else {
-        # RR: Psi is external
-        # Heuristic: Look for variance terms that match the Group names found in Lambda
-        target_groups <- rownames(lambda_mat)
+    found_sites <- c()
+    found_psis <- c()
 
-        # Identify candidate variance rows (those ending in !var or R!variance or just names)
-        # Exclude the loadings we just found
-        cand_rows <- vc_names[!grepl(term_regex_safe, vc_names)]
+    for (site in target_sites) {
+        # Strict match: "!Site!var" or starts with "Site!var" or contains "Site!var"
+        # We look for the site name surrounded by delimiters to avoid partial matches (e.g. Site1 vs Site10)
+        # Matches: "!Site!" or ":Site!" or "^Site!"
 
-        found_grps <- c()
-        found_vals <- c()
+        # Simple robust check: look for the string "!<Site>!var"
+        site_pat <- paste0("!", site, "!var$")
+        match <- grep(site_pat, var_rows, fixed = FALSE, value = TRUE)
 
-        # If user provided a specific term (e.g. "diag(Site)"), filter by it
-        if (!is.null(psi_term)) {
-            # Normalize user term for regex
-            psi_clean <- gsub("\\(", "\\\\(", psi_term)
-            psi_clean <- gsub("\\)", "\\\\)", psi_clean)
-            cand_rows <- grep(psi_clean, cand_rows, value = TRUE)
-        }
-
-        # Match logic: The term must contain the group name
-        for (g in target_groups) {
-            # Regex: explicit boundary or component match
-            # e.g. "diag(Site)!SiteA" or "SiteA!var"
-            matches <- grep(paste0("!", g, "(!var|$)"), cand_rows, value = TRUE)
-
-            if (length(matches) == 0) {
-                # Try simple match (e.g. "at(Site, A):Genotype")
-                matches <- grep(g, cand_rows, value = TRUE)
-            }
-
-            if (length(matches) > 0) {
-                # Best guess: take the first match
-                idx <- which(vc_names == matches[1])
-                found_grps <- c(found_grps, g)
-                found_vals <- c(found_vals, vc[idx, "component"])
-            }
-        }
-
-        if (length(found_grps) > 0) {
-            psi_df <- data.frame(Group = found_grps, Psi = found_vals, stringsAsFactors = FALSE)
-        } else {
-            cli::cli_warn("Could not auto-detect specific variances for RR model. Assuming 0.")
-            psi_df <- data.frame(Group = rownames(lambda_mat), Psi = 0, stringsAsFactors = FALSE)
+        if (length(match) == 1) {
+            found_sites <- c(found_sites, site)
+            found_psis <- c(found_psis, vc[match, "component"])
         }
     }
 
-    # 5. SCORES -----------------------------------------------------------------
+    if (length(found_sites) > 0) {
+        psi_df <- data.frame(Group = found_sites, Psi = found_psis)
+    } else {
+        # If RR, psi might be zero or explicitly modeled elsewhere.
+        # If FA, this is a warning.
+        if (!is_rr) cli::cli_warn("Could not match specific variances (!var) to sites.")
+        psi_df <- data.frame(Group = target_sites, Psi = 0)
+    }
+
+    # 4. Extract Scores ---------------------------------------------------------
     scores_list <- vector("list", k)
-
     for (i in 1:k) {
-        # ASReml scores: "Comp_1_Genotype" or "Fac_1_Genotype"
-        p1 <- paste0("Comp[_]?", i, ".*", gen_col_name)
-        p2 <- paste0("Fac[_]?", i, ".*", gen_col_name)
-
-        rows <- unique(c(grep(p1, coef_names), grep(p2, coef_names)))
+        # Search for "Comp_i" or "Fac_i" in random coefficients
+        pat <- paste0("(Comp|Fac|fa|rr)[_]?", i, ".*", gen_col_name)
+        rows <- grep(pat, coef_names, ignore.case = TRUE)
 
         if (length(rows) > 0) {
-            full_terms <- coef_names[rows]
-            vals <- coefs[rows, 1]
-
-            # Clean Genotype Name
-            # Remove "Comp_1_" prefix and "Genotype" prefix if repeated
-            # Heuristic: Remove everything up to the Genotype column name and subsequent separator
-            # .*: Greedy match ensures we get the last occurrence if repeated, but we anchor to gen_col_name
-            genos <- sub(paste0(".*", gen_col_name, ".*[:_]"), "", full_terms)
-
-            scores_list[[i]] <- data.frame(
-                Genotype = genos,
-                Value = vals,
-                Factor = i,
-                stringsAsFactors = FALSE
-            )
+            # Extract Genotype Name (clean suffixes)
+            clean_ids <- sub(paste0(".*", gen_col_name, "(_|:)?"), "", coef_names[rows])
+            scores_list[[i]] <- data.frame(Genotype = clean_ids, Value = coefs[rows, 1], Factor = i)
         }
     }
-
     scores_df <- do.call(rbind, scores_list)
-    has_scores <- FALSE
-    f_mat <- matrix(0, 1, k)
+    has_scores <- !is.null(scores_df) && nrow(scores_df) > 0
 
-    if (!is.null(scores_df) && nrow(scores_df) > 0) {
-        f_mat <- xtabs(Value ~ Genotype + Factor, data = scores_df)
-        f_mat <- matrix(f_mat,
-            nrow = nrow(f_mat), ncol = ncol(f_mat),
-            dimnames = dimnames(f_mat)
-        )
-        has_scores <- TRUE
-    }
+    f_mat <- if (has_scores) xtabs(Value ~ Genotype + Factor, data = scores_df) else NULL
+    if (!is.null(f_mat)) class(f_mat) <- "matrix"
 
-    # 6. ROTATION ---------------------------------------------------------------
+    # 5. Rotation & Indices -----------------------------------------------------
     rot_mat <- diag(k)
+    lambda_rot <- lambda_mat
+    f_rot <- f_mat
+    var_exp <- rep(NA, k)
+
     if (rotate && nrow(lambda_mat) > 1) {
         svd_res <- svd(lambda_mat)
         V <- svd_res$v
         lambda_rot <- lambda_mat %*% V
 
-        # Sign convention: Force first element of Fac1 to be positive (or sum positive)
-        # to ensure reproducibility
+        # Sign convention: Sum of col 1 positive
         if (sum(lambda_rot[, 1]) < 0) {
             lambda_rot[, 1] <- -lambda_rot[, 1]
             V[, 1] <- -V[, 1]
         }
 
-        f_rot <- if (has_scores) f_mat %*% V else f_mat
-        rot_mat <- V
-    } else {
-        lambda_rot <- lambda_mat
-        f_rot <- f_mat
+        if (has_scores) f_rot <- f_mat %*% V
+
+        # Variance Explained (Eigenvalues)
+        var_exp <- (svd_res$d^2 / sum(svd_res$d^2)) * 100
     }
-    colnames(lambda_rot) <- colnames(f_rot) <- paste0("Fac", 1:k)
 
-    # 7. RECONSTRUCTION ---------------------------------------------------------
-    common_grps <- intersect(rownames(lambda_rot), psi_df$Group)
-    if (length(common_grps) == 0) stop("Group mismatch between Lambda and Psi.")
+    # 6. Output Construction ----------------------------------------------------
+    # Reconstruct Correlation Matrix
+    common <- intersect(rownames(lambda_rot), psi_df$Group)
+    L_sub <- lambda_rot[common, , drop = FALSE]
+    Psi_sub <- psi_df$Psi[match(common, psi_df$Group)]
 
-    lam_ord <- lambda_rot[common_grps, , drop = FALSE]
-    # Ensure Psi aligned
-    psi_vec <- psi_df$Psi[match(common_grps, psi_df$Group)]
-    psi_ord <- diag(psi_vec, nrow = length(psi_vec))
-
-    G_est <- (lam_ord %*% t(lam_ord)) + psi_ord
+    G_est <- (L_sub %*% t(L_sub)) + diag(Psi_sub)
     C_est <- tryCatch(cov2cor(G_est), error = function(e) G_est)
 
-    G_diag <- diag(G_est)
-
-    # Calculate VAF
-    vaf_df <- data.frame(Group = common_grps, stringsAsFactors = FALSE)
-    total_vaf <- numeric(length(common_grps))
-
-    for (i in 1:k) {
-        v_fac <- lam_ord[, i]^2
-        pct_fac <- ifelse(G_diag > 1e-8, (v_fac / G_diag) * 100, 0)
-        vaf_df[[paste0("VAF_Fac", i)]] <- round(pct_fac, 2)
-        total_vaf <- total_vaf + pct_fac
-    }
-    vaf_df$Total_VAF <- round(total_vaf, 2)
-
-    # 8. FAST INDICES -----------------------------------------------------------
     fast_df <- NULL
     if (has_scores) {
-        OP <- f_rot[, 1] * mean(lambda_rot[, 1], na.rm = TRUE)
-
+        op <- f_rot[, 1] * mean(lambda_rot[, 1])
+        # Multi-factor RMSD
         if (k > 1) {
-            # Vectorized RMSD
-            # (Scores_k * Lambda_k') -> Deviation Matrix
-            dev_mat <- f_rot[, 2:k, drop = FALSE] %*% t(lambda_rot[, 2:k, drop = FALSE])
-            RMSD <- sqrt(rowMeans(dev_mat^2))
+            dev <- f_rot[, 2:k, drop = FALSE] %*% t(lambda_rot[, 2:k, drop = FALSE])
+            rmsd <- sqrt(rowMeans(dev^2))
         } else {
-            RMSD <- rep(0, nrow(f_rot))
+            rmsd <- rep(0, nrow(f_rot))
         }
-
-        fast_df <- data.frame(
-            Genotype = rownames(f_rot),
-            OP = OP,
-            RMSD = RMSD,
-            stringsAsFactors = FALSE
-        )
-        # Sort desc OP
+        fast_df <- data.frame(Genotype = rownames(f_rot), OP = op, RMSD = rmsd)
         fast_df <- fast_df[order(fast_df$OP, decreasing = TRUE), ]
     }
 
-    # 9. SITE BLUP RECONSTRUCTION (Regressed) -----------------------------------
-    site_blups_long <- NULL
-    if (has_scores) {
-        # Prediction: G = F %*% L'
-        reg_blups <- f_rot %*% t(lambda_rot)
-
-        # Convert to Long Format manually
-        # Create vectors for Genotype, Site, and Value
-        genos_vec <- rep(rownames(reg_blups), times = ncol(reg_blups))
-        sites_vec <- rep(colnames(reg_blups), each = nrow(reg_blups))
-        vals_vec <- as.vector(reg_blups)
-
-        site_blups_long <- data.frame(
-            Genotype = genos_vec,
-            Site = sites_vec,
-            Pred_Value = vals_vec,
-            stringsAsFactors = FALSE
-        )
-
-        # Merge with N_Obs if available
-        if (!is.null(n_obs_long)) {
-            site_blups_long <- merge(site_blups_long, n_obs_long,
-                by = c("Genotype", "Site"),
-                all.x = TRUE
-            )
-        }
-    }
-
-    # 8. OUTPUT AESTHETICS ------------------------------------------------------
-    names(vaf_df)[1] <- group_var
-    names(psi_df)[1] <- group_var
-
-    out <- list(
+    res <- list(
         loadings = list(raw = lambda_mat, rotated = lambda_rot),
-        scores = list(
-            raw = if (has_scores) f_mat else NULL,
-            rotated = f_rot
-        ),
-        var_comp = list(psi = psi_df, vaf = vaf_df),
+        scores = list(raw = f_mat, rotated = f_rot),
+        var_comp = list(psi = psi_df),
         matrices = list(G = G_est, Cor = C_est),
         fast = fast_df,
-        meta = list(k = k, type = type_lbl, group = group_var, genotype = gen_col_name)
+        meta = list(k = k, group = group_var, genotype = gen_col_name, var_explained = var_exp)
     )
-    class(out) <- "fa_model"
-    return(out)
+    class(res) <- "fa_model"
+    return(res)
 }
 
 #' Print Method for FA Object
@@ -501,48 +317,7 @@ calculate_d_optimality <- function(object) {
     return(list(total_d = total_det, site_impact = site_impact))
 }
 
-#' Calculate Interaction Classes (iClasses)
-#'
-#' Implements Smith et al. (2021) to detect Specific Adaptation.
-#'
-#' @param object An object of class \code{fa_model}.
-#' @param factor Integer. Which factor defines the interaction? (Default 2).
-#' @param threshold Numeric. Loading magnitude for class assignment.
-#'
-#' @return A list with site classes and genetic effects.
-#' @export
-calculate_i_classes <- function(object, factor = 2, threshold = 0.1) {
-    if (is.null(object$scores)) stop("Genotype scores (BLUPs) not found.")
-    if (factor > object$meta$k) stop("Factor not found.")
 
-    lam <- object$loadings$rotated[, factor]
-    sco <- object$scores$rotated[, factor]
-    lam1 <- object$loadings$rotated[, 1]
-    sco1 <- object$scores$rotated[, 1]
-
-    site_class <- rep("Neutral", length(lam))
-    names(site_class) <- names(lam)
-    site_class[lam > threshold] <- "Class_Pos"
-    site_class[lam < -threshold] <- "Class_Neg"
-
-    ml_pos <- mean(lam[site_class == "Class_Pos"], na.rm = TRUE)
-    ml_neg <- mean(lam[site_class == "Class_Neg"], na.rm = TRUE)
-    m_perf <- mean(lam1, na.rm = TRUE)
-
-    pred_pos <- if (is.nan(ml_pos)) rep(NA, length(sco)) else (sco1 * m_perf) + (sco * ml_pos)
-    pred_neg <- if (is.nan(ml_neg)) rep(NA, length(sco)) else (sco1 * m_perf) + (sco * ml_neg)
-
-    gen_eff <- data.frame(
-        Genotype = names(sco), Pred_Pos = pred_pos, Pred_Neg = pred_neg,
-        Differential = pred_pos - pred_neg
-    )
-    gen_eff <- gen_eff[order(gen_eff$Differential, decreasing = TRUE, na.last = TRUE), ]
-
-    return(list(
-        site_classes = data.frame(Site = names(lam), Class = site_class),
-        gen_effects = gen_eff, meta = list(factor = factor)
-    ))
-}
 
 #' Calculate Selection Index
 #'
