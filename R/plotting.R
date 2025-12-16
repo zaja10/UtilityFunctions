@@ -189,7 +189,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   S <- x$scores$rotated[, fac]
   var_pct <- x$meta$var_explained[fac]
 
-  # Smart Scaling: Fit Loadings inside 85% of Score range
+  # Smart Scaling
   max_s <- max(abs(S))
   max_l <- max(abs(L))
   scale_f <- (max_s / max_l) * 0.85
@@ -197,37 +197,100 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   df_scr <- data.frame(X = S[, 1], Y = S[, 2], ID = rownames(S), Type = "Genotype")
   df_lod <- data.frame(X = L[, 1] * scale_f, Y = L[, 2] * scale_f, ID = rownames(L), Type = "Site")
 
-  # Highlight Logic
+  # --- ANNOTATION LAYER START ---
+  # Check if annotations exist in metadata
+  has_anno <- !is.null(x$meta$annotation)
+
+  if (has_anno) {
+    # Merge tags: ID in df_lod matches Group in annotation
+    df_lod <- merge(df_lod, x$meta$annotation, by.x = "ID", by.y = "Group", all.x = TRUE)
+    # Ensure standard fallback if merge missed anything
+    df_lod$Tag[is.na(df_lod$Tag)] <- "Standard"
+
+    # Define aesthetic mapping for Sites
+    site_mapping_arrow <- aes(x = 0, y = 0, xend = X, yend = Y, color = Tag, linetype = Tag)
+    site_mapping_text <- aes(X, Y, label = ID, color = Tag)
+
+    # Custom palette for sites (Distinct from Genotypes)
+    # We use a viridis or brewer palette for site tags to ensure professionalism
+    # But we need to handle "Standard" nicely (usually dark blue/black)
+  } else {
+    df_lod$Tag <- "Standard"
+    site_mapping_arrow <- aes(x = 0, y = 0, xend = X, yend = Y) # Inherits fixed color
+    site_mapping_text <- aes(X, Y, label = ID)
+  }
+  # --- ANNOTATION LAYER END ---
+
+  # Highlight Logic for Genotypes
   df_scr$Alpha <- 0.4
-  df_scr$Color <- "grey50"
+  df_scr$Color <- "grey60" # Default Genotype Color
+
   if (!is.null(highlight)) {
     hits <- df_scr$ID %in% highlight
     df_scr$Alpha[hits] <- 1
-    df_scr$Color[hits] <- "red"
-    df_scr <- rbind(df_scr[!hits, ], df_scr[hits, ]) # Reorder
+    df_scr$Color[hits] <- "red" # Genotype Highlight Color
+    df_scr <- rbind(df_scr[!hits, ], df_scr[hits, ])
   }
 
-  ggplot() +
-    # Scores
+  p <- ggplot() +
+    # 1. Genotypes (Scores) - Layered first (background)
     geom_point(data = df_scr, aes(X, Y), color = df_scr$Color, alpha = df_scr$Alpha) +
-    # Loadings (Arrows)
-    geom_segment(
-      data = df_lod, aes(x = 0, y = 0, xend = X, yend = Y),
-      arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
-      color = "#2c3e50", size = 1
-    ) + # Thicker, Darker
-    # Labels (Repel)
-    ggrepel::geom_text_repel(
-      data = df_lod, aes(X, Y, label = ID),
-      fontface = "bold", size = 3.5, color = "#2c3e50"
-    ) +
+
+    # 2. Environments (Vectors)
+    # If annotated, use dynamic color; if not, use static dark blue
+    {
+      if (has_anno) {
+        geom_segment(
+          data = df_lod, site_mapping_arrow,
+          arrow = arrow(length = unit(0.2, "cm"), type = "closed"), size = 1
+        )
+      } else {
+        geom_segment(
+          data = df_lod, site_mapping_arrow,
+          arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
+          color = "#2c3e50", size = 1
+        )
+      }
+    } +
+
+    # 3. Labels (Smart Repel)
+    {
+      if (requireNamespace("ggrepel", quietly = TRUE)) {
+        if (has_anno) {
+          ggrepel::geom_text_repel(
+            data = df_lod, site_mapping_text,
+            fontface = "bold", size = 3.5, bg.color = "white", bg.r = 0.15
+          )
+        } else {
+          ggrepel::geom_text_repel(
+            data = df_lod, site_mapping_text,
+            color = "#2c3e50", fontface = "bold", size = 3.5,
+            bg.color = "white", bg.r = 0.15
+          )
+        }
+      } else {
+        geom_text(data = df_lod, aes(X, Y, label = ID), color = "navy")
+      }
+    } +
+
+    # 4. Aesthetics
     labs(
       x = paste0("Factor ", fac[1], " (", round(var_pct[1], 1), "%)"),
       y = paste0("Factor ", fac[2], " (", round(var_pct[2], 1), "%)"),
-      title = "FA Biplot"
-    ) +
-    coord_fixed() + # Fix Aspect Ratio
-    theme_minimal()
+      title = "FA Biplot",
+      subtitle = if (has_anno) "Colored by Environment Condition" else NULL,
+      color = "Condition", linetype = "Condition"
+    ) + # Legend Titles
+
+    coord_fixed() +
+    theme_genetics() + # Use our new theme
+
+    # 5. Scale Adjustments if Annotated
+    {
+      if (has_anno) scale_color_brewer(palette = "Dark2")
+    }
+
+  return(p)
 }
 
 .plot_vaf <- function(x) {

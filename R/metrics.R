@@ -666,6 +666,26 @@ summary.fa_model <- function(object, ...) {
     cli::cli_alert_info("Dimension: {nrow(object$matrices$G)} Sites x {nrow(object$scores$rotated)} Genotypes")
     cli::cli_alert_info("Factors: {k} | Rotation: SVD")
 
+    # NEW: Annotation Report
+    if (!is.null(object$meta$annotation)) {
+        cli::cli_text("\n")
+        cli::cli_h2("Site Annotations")
+
+        tags <- object$meta$annotation$Tag
+        counts <- table(tags)
+
+        # Print distinct count
+        cli::cli_ul(paste0(names(counts), ": ", counts))
+
+        # If "Excluded" or similar negative tags exist, highlight them
+        bad_tags <- c("Frost", "Drought", "Exclude", "Error")
+        found_bad <- intersect(names(counts), bad_tags)
+
+        if (length(found_bad) > 0) {
+            cli::cli_alert_warning("Note: {sum(counts[found_bad])} sites flagged with issues ({paste(found_bad, collapse=', ')}).")
+        }
+    }
+
     # 1. Variance Accounted For
     vaf <- object$var_comp$vaf
     # Check if Total_VAF exists (it should from fit_fa_model)

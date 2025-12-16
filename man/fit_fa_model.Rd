@@ -11,22 +11,14 @@ fit_fa_model(model, classify, psi_term = NULL, rotate = TRUE)
 
 \item{classify}{Character. The term to extract. E.g., \code{"fa(Site, 2):Genotype"}.}
 
-\item{psi_term}{Character (Optional). For RR models, the term containing specific variances.
-E.g., \code{"diag(Site):Genotype"}. If NULL for RR, attempts automatic detection.}
+\item{psi_term}{Character (Optional). Specific variance term for RR models.}
 
 \item{rotate}{Logical. Perform SVD rotation to PC solution? Default TRUE.}
 }
 \value{
-An object of class \code{fa_model}.
+An object of class \code{fa_model} with 'loadings', 'scores', 'fast', and 'variance'.
 }
 \description{
-The primary engine of the toolkit. This function parses a fitted ASReml-R model object to
-extract loadings, scores (BLUPs), and specific variances from a Factor Analytic (FA)
-or Reduced Rank (RR) model term.
-}
-\details{
-It performs a Singular Value Decomposition (SVD) rotation to align the solution
-with the Principal Component axis. This rotation is required to validly calculate
-the **Factor Analytic Selection Tools (FAST)** indices (Overall Performance and Stability)
-as proposed by Smith & Cullis (2018).
+A universal parser for ASReml-R Factor Analytic (FA) and Reduced Rank (RR) models.
+Calculates FAST indices (OP, RMSD), Global Factor Variance, and Site VAF.
 }
