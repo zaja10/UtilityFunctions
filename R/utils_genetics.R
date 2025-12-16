@@ -6,10 +6,10 @@
 #' @param G A symmetric numeric matrix (GRM).
 #' @param blend Numeric. Amount of identity matrix to blend (0-1) to ensure invertibility.
 #'        Default 0.02 (2% bending).
-#' @return A sparse dataframe (Row, Col, Value) with attribute 'INVERSE' = TRUE.
+#' @return A matrix with attribute 'INVERSE' = TRUE.
 #' @importFrom MASS ginv
 #' @importFrom Matrix forceSymmetric dsCMatrix
-#' @importFrom cli cli_alert_warning cli_alert_info cli_alert_success
+#' @importFrom cli cli_warn cli_alert_info cli_alert_success
 #' @export
 prepare_asreml_grm <- function(G, blend = 0.02) {
     if (!isSymmetric(G)) {
@@ -44,30 +44,13 @@ prepare_asreml_grm <- function(G, blend = 0.02) {
     # Use upper triangle only
     G_inv[lower.tri(G_inv)] <- 0
 
-    # Base R sparse conversion (to avoid heavy Matrix dep if desired, but Matrix is Imports)
     # Efficient extraction using Matrix package
-    # Convert to TsparseMatrix (triplets) explicitly to safely access slots
-    # forceSymmetric ensures it's treated as symmetric, casting to TsparseMatrix gives i, j, x
-    s_obj <- as(Matrix::forceSymmetric(G_inv), "TsparseMatrix")
-
-    # Extract triplets
-    # Slots @i and @j are 0-based in Matrix packages
-    out <- data.frame(
-        Row = s_obj@i + 1,
-        Col = s_obj@j + 1,
-        Value = s_obj@x
-    )
+    # We do this just to verify it works as a matrix object, but we return G_inv
+    # s_obj <- as(Matrix::forceSymmetric(G_inv), "dsCMatrix") # symmetric sparse
 
     # Return the inverse matrix object itself with 'INVERSE' attribute is most modern ASReml-R way
-    # But often users need the .giv dataframe.
-    # We will return the dataframe but attach the matrix as an attribute if needed?
-    # Or just return the dataframe which is what ASReml needs for 'vm'.
-
-    # Actually, usually for vm(Name, giv), 'giv' is the sparse matrix.
-    # We'll return the dataframe with the INVERSE attribute as per request.
-
-    attr(out, "INVERSE") <- TRUE
+    attr(G_inv, "INVERSE") <- TRUE
 
     cli::cli_alert_success("GRM inverted and prepared.")
-    return(out)
+    return(G_inv)
 }

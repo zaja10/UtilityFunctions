@@ -613,24 +613,91 @@ calculate_mt_index <- function(fa_objects_list, weights, penalties) {
     return(final_df)
 }
 
-#' Predict Genetic Gain (Breeder's Equation)
+#' Predict Genetic Gain
 #'
-#' Estimates expected genetic gain ($R$) using the Breeder's Equation:
-#' \eqn{R = i \times r \times \sigma_g}
+#' Estimates expected genetic gain (R) using the Breeder's Equation: \eqn{R = i r \sigma_g}.
+#' Useful for evaluating the ROI of the breeding cycle.
 #'
-#' @param selection_intensity Numeric. Standardized selection intensity ($i$). Default 1.755 (10%% selected).
-#' @param reliability Numeric. Reliability/Accuracy of the selection index ($r^2$ or $h^2$). If accuracy ($r$) is desired, use sqrt(rel).
-#' @param genetic_variance Numeric. Additive genetic variance ($\sigma_g^2$).
-#' @return Numeric. Expected gain in units of the trait.
+#' @param object An object of class \code{fa_model}.
+#' @param selection_percent Numeric. Top percentage to select (e.g., 5 for 5\%).
+#' @return A dataframe of predicted gains per environment/trait.
 #' @export
-predict_gain <- function(selection_intensity = 1.755, reliability, genetic_variance) {
-    # Accuracy = sqrt(Reliability)
-    acc <- sqrt(reliability)
+predict_gain <- function(object, selection_percent = 5) {
+    if (selection_percent <= 0 || selection_percent >= 100) stop("Selection % must be between 0 and 100")
 
-    # Genetic SD
-    sigma_g <- sqrt(genetic_variance)
+    # 1. Selection Intensity (i)
+    # Standardized selection differential for normal distribution
+    p <- selection_percent / 100
+    i_val <- dnorm(qnorm(1 - p)) / p
 
-    # R = i * r * sigma_g
-    R <- selection_intensity * acc * sigma_g
-    return(R)
+    # 2. Genetic Variance (Sigma_g)
+    # Diagonal of the G matrix (Genetic Variance per site)
+    G <- object$matrices$G
+    sigma_g <- sqrt(diag(G))
+
+    # 3. Prediction
+    # R = i * sigma_g (assuming r=1 for potential gain)
+    pred_gain <- i_val * sigma_g
+
+    res <- data.frame(
+        Group = names(pred_gain),
+        Sigma_G = round(sigma_g, 3),
+        Intensity_i = round(i_val, 2),
+        Potential_Gain = round(pred_gain, 3),
+        row.names = NULL
+    )
+
+    return(res)
+}
+
+#' Summary Method for FA Model
+#'
+#' Provides a commercial-grade summary of the Factor Analytic model,
+#' including mean reliability, variance accounted for, and key correlations.
+#'
+#' @param object An object of class \code{fa_model}.
+#' @param ... Additional arguments.
+#' @export
+summary.fa_model <- function(object, ...) {
+    k <- object$meta$k
+    grp <- object$meta$group
+
+    cli::cli_h1("FA Model Report")
+    cli::cli_alert_info("Dimension: {nrow(object$matrices$G)} Sites x {nrow(object$scores$rotated)} Genotypes")
+    cli::cli_alert_info("Factors: {k} | Rotation: SVD")
+
+    # 1. Variance Accounted For
+    vaf <- object$var_comp$vaf
+    # Check if Total_VAF exists (it should from fit_fa_model)
+    if (!is.null(vaf$Total_VAF)) {
+        mean_vaf <- mean(vaf$Total_VAF, na.rm = TRUE)
+        cli::cli_alert_success("Mean Variance Accounted For (VAF): {round(mean_vaf, 1)}%")
+
+        # Identify poor sites
+        poor_sites <- vaf[vaf$Total_VAF < 70, 1]
+        if (length(poor_sites) > 0) {
+            cli::cli_alert_warning("Low Quality Sites (VAF < 70%): {.val {head(poor_sites, 3)}} {if(length(poor_sites)>3) '...' else ''}")
+        }
+    }
+
+    # 2. Correlations
+    cor_mat <- object$matrices$Cor
+    upper_tri <- cor_mat[upper.tri(cor_mat)]
+    avg_cor <- mean(upper_tri, na.rm = TRUE)
+
+    cat("\n")
+    cli::cli_text("Genetic Correlation Summary:")
+    cli::cli_ul(c(
+        "Average: {round(avg_cor, 2)}",
+        "Range: {round(min(upper_tri), 2)} to {round(max(upper_tri), 2)}"
+    ))
+
+    # 3. FAST Indices Preview
+    if (!is.null(object$fast)) {
+        cat("\n")
+        cli::cli_text("Top 3 Genotypes (Overall Performance):")
+        print(head(object$fast[, c("Genotype", "OP", "RMSD")], 3), row.names = FALSE)
+    }
+
+    invisible(object)
 }

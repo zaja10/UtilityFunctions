@@ -20,7 +20,8 @@ test_that("prepare_asreml_grm handles singular matrices", {
     G_inv <- expect_warning(prepare_asreml_grm(G, blend = 0.02), regexp = NA) # No warning for singularity
 
     expect_true(attr(G_inv, "INVERSE"))
-    expect_true(all(c("Row", "Col", "Value") %in% colnames(G_inv)))
+    # Updated: Now returns Matrix object, not dataframe
+    expect_true(is.matrix(G_inv) || inherits(G_inv, "Matrix"))
 
     # Check if symmetric
     # For triplet, we might just check uniqueness of pairs if we enforced upper tri?

@@ -13,7 +13,7 @@ prepare_asreml_grm(G, blend = 0.02)
 Default 0.02 (2% bending).}
 }
 \value{
-A sparse dataframe (Row, Col, Value) with attribute 'INVERSE' = TRUE.
+A matrix with attribute 'INVERSE' = TRUE.
 }
 \description{
 Checks a Genomic Relationship Matrix (GRM) for singularity, bends it if necessary,

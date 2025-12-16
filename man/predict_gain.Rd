@@ -2,21 +2,19 @@
 % Please edit documentation in R/metrics.R
 \name{predict_gain}
 \alias{predict_gain}
-\title{Predict Genetic Gain (Breeder's Equation)}
+\title{Predict Genetic Gain}
 \usage{
-predict_gain(selection_intensity = 1.755, reliability, genetic_variance)
+predict_gain(object, selection_percent = 5)
 }
 \arguments{
-\item{selection_intensity}{Numeric. Standardized selection intensity ($i$). Default 1.755 (10%% selected).}
+\item{object}{An object of class \code{fa_model}.}
 
-\item{reliability}{Numeric. Reliability/Accuracy of the selection index ($r^2$ or $h^2$). If accuracy ($r$) is desired, use sqrt(rel).}
-
-\item{genetic_variance}{Numeric. Additive genetic variance ($\sigma_g^2$).}
+\item{selection_percent}{Numeric. Top percentage to select (e.g., 5 for 5\%).}
 }
 \value{
-Numeric. Expected gain in units of the trait.
+A dataframe of predicted gains per environment/trait.
 }
 \description{
-Estimates expected genetic gain ($R$) using the Breeder's Equation:
-\eqn{R = i \times r \times \sigma_g}
+Estimates expected genetic gain (R) using the Breeder's Equation: \eqn{R = i r \sigma_g}.
+Useful for evaluating the ROI of the breeding cycle.
 }
