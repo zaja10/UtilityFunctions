@@ -43,7 +43,8 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     message("--- Starting FA/RR Extraction ---")
 
     # 1. SETUP ------------------------------------------------------------------
-    vc <- summary(model)$varcomp
+    vc <- if (!is.null(model$varcomp)) model$varcomp else tryCatch(summary(model)$varcomp, error = function(e) NULL)
+    if (is.null(vc)) stop("Could not extract variance components from model.")
     vc_names <- rownames(vc)
     coefs <- coef(model)$random
     coef_names <- rownames(coefs)

@@ -11,8 +11,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // calc_cross_variance_cpp
-double calc_cross_variance_cpp(NumericVector p1, NumericVector p2, NumericVector effects, NumericVector map);
-RcppExport SEXP _UtilityFunctions_calc_cross_variance_cpp(SEXP p1SEXP, SEXP p2SEXP, SEXP effectsSEXP, SEXP mapSEXP) {
+double calc_cross_variance_cpp(NumericVector p1, NumericVector p2, NumericVector effects, NumericVector map, double max_dist);
+RcppExport SEXP _UtilityFunctions_calc_cross_variance_cpp(SEXP p1SEXP, SEXP p2SEXP, SEXP effectsSEXP, SEXP mapSEXP, SEXP max_distSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -20,13 +20,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type p2(p2SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type effects(effectsSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type map(mapSEXP);
-    rcpp_result_gen = Rcpp::wrap(calc_cross_variance_cpp(p1, p2, effects, map));
+    Rcpp::traits::input_parameter< double >::type max_dist(max_distSEXP);
+    rcpp_result_gen = Rcpp::wrap(calc_cross_variance_cpp(p1, p2, effects, map, max_dist));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_UtilityFunctions_calc_cross_variance_cpp", (DL_FUNC) &_UtilityFunctions_calc_cross_variance_cpp, 4},
+    {"_UtilityFunctions_calc_cross_variance_cpp", (DL_FUNC) &_UtilityFunctions_calc_cross_variance_cpp, 5},
     {NULL, NULL, 0}
 };
 
