@@ -2,15 +2,10 @@
 % Please edit documentation in R/plotting.R
 \name{plot.h2_comparison}
 \alias{plot.h2_comparison}
-\title{Plot Heritability/Reliability Comparison}
+\title{Plot Heritability Comparison}
 \usage{
 \method{plot}{h2_comparison}(x, ...)
 }
-\arguments{
-\item{x}{An object of class \code{h2_comparison}.}
-
-\item{...}{Additional arguments.}
-}
 \description{
-Plot Heritability/Reliability Comparison
+Plot Heritability Comparison
 }

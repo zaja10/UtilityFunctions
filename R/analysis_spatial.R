@@ -18,45 +18,31 @@ force_convergence <- function(model, max_tries = 20, tolerance = 1.0) {
 
     try_count <- 0
     converged <- FALSE
-    last_loglik <- -Inf
-
-    # Check initial status
-    if (!is.null(summary(model)$varcomp)) {
-        pct_chg <- summary(model)$varcomp[, "%ch"]
-        if (!any(pct_chg > tolerance, na.rm = TRUE)) {
-            converged <- TRUE
-        }
-    }
 
     while (!converged && try_count < max_tries) {
         try_count <- try_count + 1
         prev_loglik <- model$loglik
 
-        # Pass workspace to update if possible? update() usually inherits.
-        model <- suppressWarnings(try(update(model), silent = TRUE))
+        # Safe update
+        model_upd <- suppressWarnings(try(update(model), silent = TRUE))
 
-        if (inherits(model, "try-error")) {
-            cli::cli_alert_warning("Model update failed during convergence loop.")
+        if (inherits(model_upd, "try-error") || is.null(model_upd)) {
+            cli::cli_alert_warning("Model update failed. Returning previous iteration.")
             break
         }
 
-        # Check Variance Component Change
-        pct_chg <- summary(model)$varcomp[, "%ch"]
-        vc_stable <- !any(pct_chg > tolerance, na.rm = TRUE)
+        model <- model_upd
 
-        # Check LogLik Stability
-        ll_stable <- FALSE
-        if (!is.null(prev_loglik) && !is.null(model$loglik)) {
-            if (abs(model$loglik - prev_loglik) < 0.05) {
-                ll_stable <- TRUE
+        # Check Convergence Flags first (fastest)
+        if (isTRUE(model$converge)) {
+            converged <- TRUE
+        } else {
+            # Fallback: Check LogLik stability if 'converge' flag is loose
+            if (!is.null(prev_loglik) && !is.null(model$loglik)) {
+                if (abs(model$loglik - prev_loglik) < 0.05) converged <- TRUE
             }
         }
-
-        if (vc_stable || ll_stable) {
-            converged <- TRUE
-        }
     }
-
     return(model)
 }
 

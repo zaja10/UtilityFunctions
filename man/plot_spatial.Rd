@@ -2,19 +2,10 @@
 % Please edit documentation in R/plotting.R
 \name{plot_spatial}
 \alias{plot_spatial}
-\title{Plot Spatial Field Map (Robust)}
+\title{Plot Spatial Field Map}
 \usage{
 plot_spatial(input, row = "Row", col = "Column", attribute = "Yield")
 }
-\arguments{
-\item{input}{An `asreml` model object OR a `data.frame`.}
-
-\item{row}{Column name for Field Row.}
-
-\item{col}{Column name for Field Column.}
-
-\item{attribute}{String. What to plot? "Yield", "residuals", "fitted".}
-}
 \description{
-Maps raw data (from dataframe) or residuals (from model) to the physical field layout.
+Plot Spatial Field Map
 }

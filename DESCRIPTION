@@ -4,14 +4,12 @@ Version: 1.1.0
 Authors@R: person("Zachary Aldiss", email = "zaldiss@illinois.edu", role = c("aut", "cre"))
 Author: Zachary Aldiss [aut, cre]
 Maintainer: Zachary Aldiss <zaldiss@illinois.edu>
-Description: A specialized suite for processing factor analytic models. Implements "FAST" selection tools, design diagnostics, and cross prediction utilities involving gametic variance.
+Description: A specialized suite for processing factor analytic models (ASReml-R).
+    Implements "FAST" selection tools (Smith & Cullis, 2018), design diagnostics, 
+    and cross prediction utilities.
 Depends: 
     R (>= 3.5.0)
 Imports: 
-    dplyr,
-    tidyr,
-    stringr,
-    tibble,
     ggplot2,
     cli,
     MASS,
@@ -19,16 +17,17 @@ Imports:
     Rcpp
 LinkingTo: 
     Rcpp
-License: MIT
-Encoding: UTF-8
-LazyData: true
-RoxygenNote: 7.3.3
 Suggests: 
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
     agridat,
+    ggrepel,
     asreml
+License: MIT
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 URL: https://github.com/zaja10/UtilityFunctions
 BugReports: https://github.com/zaja10/UtilityFunctions/issues

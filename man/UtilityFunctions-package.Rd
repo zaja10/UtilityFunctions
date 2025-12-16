@@ -6,7 +6,7 @@
 \alias{UtilityFunctions-package}
 \title{UtilityFunctions: Factor Analytic Model Extraction and Selection Tools}
 \description{
-A specialized suite for processing factor analytic models. Implements "FAST" selection tools, design diagnostics, and cross prediction utilities involving gametic variance.
+A specialized suite for processing factor analytic models (ASReml-R). Implements "FAST" selection tools (Smith & Cullis, 2018), design diagnostics, and cross prediction utilities.
 }
 \seealso{
 Useful links:

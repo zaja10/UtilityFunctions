@@ -7,43 +7,22 @@
 \method{plot}{fa_model}(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...)
 }
 \arguments{
-\item{x}{An object of class \code{fa_model} produced by \code{fit_fa_model()}.}
+\item{x}{An object of class \code{fa_model}.}
 
-\item{type}{A character string specifying the visualization module. Options:
-\itemize{
-  \item \code{"fast"} (Default): **Factor Analytic Selection Tools**. Plots Overall Performance (OP) vs Stability (RMSD).
-  \item \code{"heatmap"}: **Genetic Correlation Matrix**. Visualizes the relationship structure between environments.
-  \item \code{"latent_reg"}: **Latent Regression**. Visualizes the drivers of GxE by plotting genotype slopes against environmental loadings.
-  \item \code{"biplot"}: **GxE Biplot**. A 2D projection of Genotypes (Scores) and Environments (Vectors).
-  \item \code{"vaf"}: **Site Quality**. A bar chart of Variance Accounted For (\%) per site.
-  \item \code{"d_opt"}: **Network Efficiency**. A bar chart of D-Optimality "Information Loss" (requires \code{get_d_optimality}).
-  \item \code{"diff"}: **Crossover Interaction**. A slope graph showing rank changes between Interaction Classes (requires \code{get_i_classes}).
-  \item \code{"h2"}: **Reliability/Repeatability**. A bar chart comparing Cullis/Standard metrics per site. Requires output from \code{compare_h2()}.
-}}
+\item{type}{Character. Visualization type: "fast", "heatmap", "latent_reg", "biplot", "vaf", "d_opt", "diff".}
 
-\item{factor}{Integer or Vector. Controls which factors are visualized.
-\itemize{
-  \item For \code{"latent_reg"}: Can be a single integer to see specific stability drivers, or \code{NULL} to plot all factors.
-  \item For \code{"biplot"}: A vector of length 2 (e.g., \code{c(1, 2)}) specifying the X and Y axes.
-}}
+\item{factor}{Integer/Vector. Factors to visualize.}
 
-\item{n_label}{Integer. The number of top-performing genotypes (sorted by OP) to automatically label. Default is 5.}
+\item{n_label}{Integer. Number of top genotypes to label.}
 
-\item{highlight}{Character vector. Names of specific genotypes to highlight (e.g., Check varieties).}
+\item{highlight}{Character vector. Genotypes to highlight.}
 
-\item{...}{Additional arguments passed to ggplot2 themes or internally.}
+\item{...}{Additional arguments.}
 }
 \value{
 A ggplot object.
 }
 \description{
-The central plotting interface for the toolkit. This S3 method dispatches to
-specific visualization engines based on the \code{type} argument, covering the
-full analysis lifecycle: from Site Quality Control to Genotype Selection and
-Mechanistic GxE analysis.
-
-It uses **ggplot2** to produce publication-quality figures.
-}
-\seealso{
-\code{\link{fit_fa_model}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}, \code{\link{compare_h2}}
+The central plotting interface for the toolkit.
+Uses **ggplot2** for rendering but Base R for data preparation to minimize dependencies.
 }
