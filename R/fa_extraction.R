@@ -28,7 +28,9 @@
 #' @return An object of class \code{fa_asreml} containing:
 #' \describe{
 #'   \item{loadings}{A list containing \code{raw} and \code{rotated} site loading matrices.}
-#'   \item{scores}{A list containing \code{raw} and \code{rotated} genotype score matrices (BLUPs).}
+#'   \item{scores}{A list containing \code{raw}, \code{rotated} genotype scores, and \code{blups_in_met} (the Site-specific predicted values reconstructed from the latent factors).}
+#'   \item{blues}{A dataframe of the centered BLUEs (Fixed Effects) for the Genotype, if fitted.}
+#'   \item{data_stats}{A dataframe containing replication statistics (\code{n_obs}, \code{replicated}) derived from the original dataset.}
 #'   \item{var_comp}{A list containing the extracted specific variances (\code{psi}) and a table of Variance Accounted For (\code{vaf}).}
 #'   \item{matrices}{The estimated Genetic Covariance (\code{G}) and Genetic Correlation (\code{Cor}) matrices.}
 #'   \item{fast}{A dataframe containing the FAST indices: Overall Performance (\code{OP}) and Stability (\code{RMSD}).}
@@ -41,7 +43,7 @@
 #' @importFrom tibble column_to_rownames rownames_to_column
 #' @importFrom stats coef cov2cor sd
 #' @export
-extract_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
+fa.asreml <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     cat("--- Starting FA/RR Extraction ---\n")
 
     # 1. SETUP ------------------------------------------------------------------

@@ -43,7 +43,12 @@ model <- asreml(fixed = yield ~ env,
                 data = dasilva.maize)
 
 # 2. Extract & Rotate
+# 2. Extract & Rotate
 results <- fa.asreml(model, classify = "fa(env, 2):gen", rotation = "varimax")
+
+# 3. Access BLUEs & BLUPs (New)
+blues <- results$blues                   # Centered Fixed Effects
+blups <- results$scores$blups_in_met     # Reconstructed Site Effects
 
 # 3. Visualization: OP vs RMSD
 plot(results, type = "fast")
