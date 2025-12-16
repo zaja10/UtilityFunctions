@@ -2,23 +2,22 @@
 % Please edit documentation in R/analysis_genomics.R
 \name{predict_cross_utility}
 \alias{predict_cross_utility}
-\title{Predict Cross Utility (Genetic Variance)}
+\title{Predict Cross Utility (Single or Batch)}
 \usage{
-predict_cross_utility(parents, effects, map, max_dist = 3)
+predict_cross_utility(parents, ...)
 }
 \arguments{
-\item{parents}{Matrix (2 x M) of parental genotypes (scored 0, 1, 2).}
+\item{parents}{Either:
+1. A numeric matrix (2 x M) for a single cross (Standard).
+2. A dataframe with columns "Parent1" and "Parent2" (Batch Mode).}
 
-\item{effects}{Vector (M) of marker effects.}
-
-\item{map}{Vector (M) of genetic map positions (in Morgans).}
-
-\item{max_dist}{Numeric. Maximum distance (Morgans) to consider linkage.}
+\item{...}{Additional arguments.
+- If Batch Mode: must provide \code{markers} (Genotype Matrix) and \code{effects}, \code{map}.
+- If Single Mode: provide \code{effects}, \code{map}, \code{max_dist}.}
 }
 \value{
-A numeric value representing the expected variance.
+A numeric value (Single) or a Dataframe with UC values (Batch).
 }
 \description{
-Calculates the expected genetic variance of a biparental cross given
-parental genotypes and marker effects. Enforces map sorting for C++ engine safety.
+Calculates the expected genetic variance (UC) for one or multiple crosses.
 }

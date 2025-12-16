@@ -55,7 +55,9 @@ process_weather_indices <- function(weather_data, trial_metadata, t_base = 0, he
 
             if (nrow(dat) > 0) {
                 # 1. Thermal Time (GDD)
-                gdd <- sum(((dat$MaxT + dat$MinT) / 2) - t_base, na.rm = TRUE)
+                # Standard: Clamp daily GDD to 0 so cold days don't subtract from total
+                daily_gdd <- ((dat$MaxT + dat$MinT) / 2) - t_base
+                gdd <- sum(pmax(0, daily_gdd), na.rm = TRUE)
                 trial_ecs[[paste0(win_name, "_GDD")]] <- max(0, gdd)
 
                 # 2. Heat Stress
@@ -87,4 +89,3 @@ process_weather_indices <- function(weather_data, trial_metadata, t_base = 0, he
     mat <- as.matrix(ec_df[, -1])
     return(mat)
 }
-

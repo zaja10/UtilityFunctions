@@ -29,7 +29,7 @@ optimize_mating_list <- function(parents, marker_effects, map, markers, n_crosse
 
     # Calculate initial fitness
     # Batch calculate UC for current set
-    current_res <- predict_cross_utility(current_set, markers, marker_effects, map)
+    current_res <- predict_cross_utility(current_set, markers = markers, effects = marker_effects, map = map)
     current_fitness <- sum(current_res$UC)
 
     message(sprintf("Starting GA... Initial Fitness: %.2f", current_fitness))
@@ -55,7 +55,7 @@ optimize_mating_list <- function(parents, marker_effects, map, markers, n_crosse
         add_candidates <- new_candidates_pool[sample(nrow(new_candidates_pool), n_mut), ]
 
         # Calculate UC for new candidates
-        add_res <- predict_cross_utility(add_candidates, markers, marker_effects, map)
+        add_res <- predict_cross_utility(add_candidates, markers = markers, effects = marker_effects, map = map)
 
         # Proposed new set
         prop_set <- rbind(best_set[-remove_idx, ], add_res)

@@ -12,6 +12,7 @@ Depends:
 Imports: 
     ggplot2,
     cli,
+    dplyr,
     MASS,
     Matrix,
     Rcpp
