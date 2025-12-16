@@ -43,18 +43,18 @@ calc_h2_cullis <- function(model_list, id = "Genotype") {
 
     # Loop through each model in the list 'model_list'
     for (model_name in names(model_list)) {
-        print(paste("Processing model:", model_name))
+        message("Processing model: ", model_name)
         asr <- model_list[[model_name]]
 
         # --- Basic Checks ---
         # Check if the element is actually an asreml object and converged
         if (is.null(asr) || !inherits(asr, "asreml")) {
-            print(paste("Skipping", model_name, "- Not a valid asreml object."))
+            message("Skipping ", model_name, " - Not a valid asreml object.")
             h2_results[[model_name]] <- NA # Store NA for invalid objects
             next # Go to the next iteration
         }
         if (!asr$converge) {
-            print(paste("Skipping", model_name, "- Model did not converge."))
+            message("Skipping ", model_name, " - Model did not converge.")
             h2_results[[model_name]] <- NA # Store NA for non-converged models
             next # Go to the next iteration
         }
@@ -127,7 +127,7 @@ calc_h2_cullis <- function(model_list, id = "Genotype") {
             },
             error = function(e) {
                 # If any error occurred in the try block
-                print(paste("Error processing", model_name, ":", e$message))
+                message("Error processing ", model_name, ": ", e$message)
                 return(NA) # Return NA if calculation fails
             }
         )
@@ -142,13 +142,19 @@ calc_h2_cullis <- function(model_list, id = "Genotype") {
 
     # Print summary of NAs at the end
     print("------------------------------------")
-    print("Heritability calculation summary:")
-    print(paste("Number of models processed:", length(model_list)))
-    print(paste("Number of successful calculations:", sum(!is.na(h2_vector))))
-    print(paste("Number of failed calculations (NA):", sum(is.na(h2_vector))))
+    message("Heritability calculation summary:")
+    message("Number of models processed: ", length(model_list))
+    message("Number of successful calculations: ", sum(!is.na(h2_vector)))
+    message("Number of failed calculations (NA): ", sum(is.na(h2_vector)))
     print("------------------------------------")
 
     return(h2_vector)
+}
+
+#' @export
+calculate_h2_from_list <- function(...) {
+    warning("This function is deprecated. Please use 'calc_h2_cullis()' instead.")
+    calc_h2_cullis(...)
 }
 
 # --- How to use the function ---
