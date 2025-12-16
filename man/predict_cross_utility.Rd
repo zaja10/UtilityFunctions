@@ -19,7 +19,7 @@ Alternatively, a dataframe with columns "Parent1" and "Parent2".}
 
 \item{map}{Named numeric vector of marker positions in Morgans (NOT cM).}
 
-\item{i_sel}{Numeric. Selection intensity (standardized). Default is 2.06 (Top 5%).}
+\item{i_sel}{Numeric. Selection intensity (standardized). Default is 2.06 (Top 5\%).}
 }
 \value{
 A dataframe containing the columns Parent1, Parent2, Mu, Sigma, and UC (Usefulness Criterion).
