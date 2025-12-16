@@ -48,7 +48,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     scale_shape_manual(values = c("Highlight" = 23, "Top" = 21, "Other" = 21)) +
     scale_size_manual(values = c("Highlight" = 3, "Top" = 3, "Other" = 2)) +
     labs(x = "Stability (RMSD)", y = "Performance (OP)", title = "FAST Selection") +
-    theme_minimal() +
+    theme_genetics() +
     theme(legend.position = "bottom")
 
   # Use ggrepel if available
@@ -82,7 +82,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     geom_tile(color = "white") +
     geom_text(aes(label = sprintf("%.2f", Correlation)), size = 3) +
     scale_fill_distiller(palette = "RdYlGn", limit = c(-1, 1), direction = 1) +
-    theme_minimal() +
+    theme_genetics() +
     labs(x = NULL, y = NULL, title = paste("Genetic Correlation:", grp_name)) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
@@ -178,7 +178,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     geom_abline(data = all_slopes, aes(intercept = 0, slope = Slope, color = ColorGroup), alpha = 0.8) +
     facet_wrap(~Factor, scales = "free") +
     scale_color_manual(values = c("Highlight" = "red", "Top" = "navy")) +
-    theme_minimal() +
+    theme_genetics() +
     labs(title = "Latent Regression", x = paste(grp_name, "Loading"), y = "Interaction Deviation")
 }
 
@@ -218,7 +218,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     ) +
     geom_text(data = df_load, aes(label = Label), color = "darkgreen", size = 3, hjust = -0.2) +
     labs(x = paste("Factor", fac[1]), y = paste("Factor", fac[2]), title = "Biplot") +
-    theme_minimal() +
+    theme_genetics() +
     coord_fixed()
 
   if (requireNamespace("ggrepel", quietly = TRUE)) {
@@ -310,7 +310,7 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     geom_text(data = plot_df[plot_df$Class == "Class (-)", ], aes(label = Genotype), hjust = 1.1, size = 3) +
     scale_color_manual(values = c("Highlight" = "red", "Normal" = "grey50")) +
     scale_linewidth_manual(values = c("Highlight" = 1, "Normal" = 0.5)) +
-    theme_minimal() +
+    theme_genetics() +
     labs(title = "Crossover Interaction", x = NULL, y = "Genetic Value") +
     theme(legend.position = "none")
 }
@@ -333,7 +333,7 @@ plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield"
   ggplot(df, aes(x = .data[[col]], y = .data[[row]], fill = Value_To_Plot)) +
     geom_tile() +
     scale_fill_distiller(palette = "Spectral") +
-    theme_minimal() +
+    theme_genetics() +
     coord_fixed() +
     labs(title = main_title)
 }
@@ -346,6 +346,6 @@ plot_met_trend <- function(data, x = "Year", y = "Yield", main = "Yield Trend", 
   ggplot(data, aes(x = factor(.data[[x]]), y = .data[[y]])) +
     geom_boxplot(fill = "lightgreen", alpha = 0.5) +
     geom_smooth(aes(x = as.numeric(factor(.data[[x]])), y = .data[[y]]), method = "lm", se = FALSE, color = "red") +
-    theme_minimal() +
+    theme_genetics() +
     labs(title = main, x = x, y = y)
 }
