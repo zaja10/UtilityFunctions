@@ -24,7 +24,7 @@ test_that("pad_trial_layout handles MET groups", {
         Yield = c(10, 20, 30)
     )
 
-    padded <- pad_trial_layout(df_gap, group = "Trial")
+    padded <- pad_trial_layout(df_gap, group_cols = "Trial")
     expect_equal(nrow(padded), 4)
 
     # Check T1 missing row (2,1)

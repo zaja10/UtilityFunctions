@@ -44,7 +44,7 @@
 #' @importFrom stats coef cov2cor sd
 #' @export
 fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
-    cat("--- Starting FA/RR Extraction ---\n")
+    message("--- Starting FA/RR Extraction ---")
 
     # 1. SETUP ------------------------------------------------------------------
     vc <- summary(model)$varcomp
@@ -69,7 +69,7 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
     is_rr <- grepl("rr\\(", clean_str)
     model_type <- if (is_rr) "Reduced Rank (RR)" else "Factor Analytic (FA)"
 
-    cat(sprintf("-> Type: %s | Site: '%s' | Factors: %d\n", model_type, site_col, k))
+    message(sprintf("-> Type: %s | Site: '%s' | Factors: %d", model_type, site_col, k))
 
     # 1.1 DATA STATS (REPLICATION) ----------------------------------------------
     data_name <- as.character(model$call$data)
@@ -153,7 +153,7 @@ fit_fa_model <- function(model, classify, psi_term = NULL, rotate = TRUE) {
             mutate(Site = str_extract(FullTerm, paste0("(?<=", term_regex, "!)(.*?)(?=!var)")))
     } else {
         if (!is.null(psi_term)) {
-            cat("-> Hunting for specific variances...\n")
+            message("-> Hunting for specific variances...")
             candidate_rows <- vc_names[!grepl(paste0("^", term_regex, "!"), vc_names)]
             sites_to_find <- rownames(lambda_mat)
             found_psi <- list()
@@ -293,6 +293,7 @@ print.fa_model <- function(x, ...) {
         cat("\n--- Top 5 Genotypes (by OP) ---\n")
         print(head(x$fast[, c("Genotype", "OP", "RMSD")], 5))
     }
+    invisible(x)
 }
 #' Factor Analytic Selection Tools (FAST)
 #'
@@ -458,3 +459,9 @@ plot.fast_selection <- function(x, type = "op_rmsd", ...) {
     }
 }
 
+
+#' @export
+fa.asreml <- function(...) {
+    warning("Deprecated: 'fa.asreml' is deprecated. Use 'fit_fa_model()' instead.")
+    fit_fa_model(...)
+}

@@ -97,8 +97,8 @@ This function implements two key optimizations for large-scale genomic trials:
 }}
 \examples{
 \dontrun{
-# Assuming 'fm' is a list like fm <- list(fm0=model0, fm1=model1, ...)
-h2_values <- calc_h2_cullis(fm, id = "Variety")
-print(h2_values)
+# Example usage:
+fm <- list() # Placeholder for a list of asreml models
+# h2_values <- calc_h2_cullis(fm, id = "Variety")
 }
 }

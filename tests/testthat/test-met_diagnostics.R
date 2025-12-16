@@ -1,5 +1,3 @@
-source("../../R/met_diagnostics.r")
-
 test_that("pad_trial_layout fills missing coordinates", {
     # Create sparse data
     df <- data.frame(
@@ -31,7 +29,7 @@ test_that("pad_trial_layout handles MET groups", {
         Yield = c(10, 20, 30)
     ) # T1 ranges 1-3. Missing 2.
 
-    padded <- pad_trial_layout(df, group = "Trial")
+    padded <- pad_trial_layout(df, group_cols = "Trial")
 
     # T1 should have 3 rows now (1, 2(NA), 3). T2 should have 1 row. Total 4.
     expect_equal(nrow(padded), 4)
@@ -42,7 +40,7 @@ test_that("pad_trial_layout handles MET groups", {
     expect_true(is.na(t1_pad$Yield))
 })
 
-test_that("get_connectivity returns correct counts", {
+test_that("calculate_connectivity returns correct counts", {
     # 2 Years, 3 Genotypes
     # Y1: G1, G2
     # Y2: G2, G3
@@ -51,7 +49,7 @@ test_that("get_connectivity returns correct counts", {
         Genotype = c("G1", "G2", "G2", "G3")
     )
 
-    mat <- get_connectivity(df, "Year", "Year", "Genotype")
+    mat <- calculate_connectivity(df, "Year", "Year", "Genotype")
 
     # Diagonal: Total Genotypes per Year
     expect_equal(mat["Y1", "Y1"], 2)
@@ -62,7 +60,7 @@ test_that("get_connectivity returns correct counts", {
 
     # Test Jaccard
     # Y1 has 2, Y2 has 2. Shared 1. Union = 3. J = 1/3 = 0.333
-    jacc <- get_connectivity(df, "Year", "Year", "Genotype", method = "jaccard")
+    jacc <- calculate_connectivity(df, "Year", "Year", "Genotype", method = "jaccard")
     expect_equal(jacc["Y1", "Y2"], 1 / 3, tolerance = 1e-4)
 })
 

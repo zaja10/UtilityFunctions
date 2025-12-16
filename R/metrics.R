@@ -28,9 +28,9 @@ NULL
 #'
 #' @examples
 #' \dontrun{
-#' # Assuming 'fm' is a list like fm <- list(fm0=model0, fm1=model1, ...)
-#' h2_values <- calc_h2_cullis(fm, id = "Variety")
-#' print(h2_values)
+#' # Example usage:
+#' fm <- list() # Placeholder for a list of asreml models
+#' # h2_values <- calc_h2_cullis(fm, id = "Variety")
 #' }
 calc_h2_cullis <- function(model_list, id = "Genotype") {
     # Check if input is a list
@@ -141,12 +141,12 @@ calc_h2_cullis <- function(model_list, id = "Genotype") {
     h2_vector <- unlist(h2_results)
 
     # Print summary of NAs at the end
-    print("------------------------------------")
+    message("------------------------------------")
     message("Heritability calculation summary:")
     message("Number of models processed: ", length(model_list))
     message("Number of successful calculations: ", sum(!is.na(h2_vector)))
     message("Number of failed calculations (NA): ", sum(is.na(h2_vector)))
-    print("------------------------------------")
+    message("------------------------------------")
 
     return(h2_vector)
 }
@@ -330,7 +330,7 @@ compare_h2 <- function(model, fa_object = NULL, grm = NULL,
         if (!inherits(fa_object, "fa_model")) stop("fa_object must be of class 'fa_model'.")
         if (is.null(classify) && !is.null(fa_object$meta$classify)) classify <- fa_object$meta$classify
 
-        cat("-> Extracting Vg from FA object...\n")
+        message("-> Extracting Vg from FA object...")
         G_mat <- fa_object$matrices$G
         site_stats <- data.frame(Site = rownames(G_mat), Vg = diag(G_mat))
         sites <- as.character(site_stats$Site)
@@ -341,7 +341,7 @@ compare_h2 <- function(model, fa_object = NULL, grm = NULL,
         site_term_name <- term_parts[1]
     } else {
         if (is.null(classify)) stop("The 'classify' argument is required when fa_object is NULL.")
-        cat("-> Extracting Vg from Model Summary...\n")
+        message("-> Extracting Vg from Model Summary...")
 
         vc <- summary(model)$varcomp
         vc_names <- rownames(vc)
@@ -396,7 +396,7 @@ compare_h2 <- function(model, fa_object = NULL, grm = NULL,
             site_stats <- data.frame(Site = names(vg_list), Vg = as.numeric(vg_list))
             sites <- as.character(site_stats$Site)
         } else {
-            cat("-> Detected Single-Site/Global model.\n")
+            message("-> Detected Single-Site/Global model.")
             is_multisite <- FALSE
             sites <- "Global"
             # Scalar Vg
@@ -421,7 +421,7 @@ compare_h2 <- function(model, fa_object = NULL, grm = NULL,
     results_list <- list()
 
     if (is_multisite) {
-        cat(sprintf("-> Running split predictions across %d sites...\n", length(sites)))
+        message(sprintf("-> Running split predictions across %d sites...", length(sites)))
         pb <- utils::txtProgressBar(min = 0, max = length(sites), style = 3)
     }
 

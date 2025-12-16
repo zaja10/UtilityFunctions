@@ -126,7 +126,7 @@ To prepare the entire dataset for spatial analysis (e.g. Spline/AR1 models), we 
 
 ```{r padding}
 # Pad all trials by group
-data_padded <- pad_trial_layout(data, row = "Row", col = "Column", group = "Trial")
+data_padded <- pad_trial_layout(data, row = "Row", col = "Column", group_cols = "Trial")
 
 # Check dimensions
 dim(data)
