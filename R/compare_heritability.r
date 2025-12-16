@@ -182,7 +182,15 @@ compare_h2 <- function(model, fa_object = NULL, grm = NULL,
         # Execute
         tryCatch(
             {
-                preds <- do.call(asreml::predict.asreml, pred_args)
+                # FIX: do.call fails with asreml::predict because it passes the object by value.
+                # We need to construct the call using the symbol 'model' and evaluate it.
+                call_args <- list(quote(asreml::predict.asreml), object = quote(model))
+
+                # Append other arguments
+                call_args <- c(call_args, pred_args[names(pred_args) != "object"])
+
+                # Evaluate
+                preds <- eval(as.call(call_args))
 
                 pvals <- preds$pvals
                 total_sed <- preds$sed

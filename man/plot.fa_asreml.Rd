@@ -93,5 +93,5 @@ plot(results, type = "heatmap")
 }
 }
 \seealso{
-\code{\link{fa.asreml}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}, \code{\link{compare_h2}}
+\code{\link{fa.asreml}}, \code{\link{calculate_d_optimality}}, \code{\link{calculate_i_classes}}, \code{\link{compare_h2}}
 }

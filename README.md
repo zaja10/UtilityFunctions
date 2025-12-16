@@ -4,10 +4,10 @@
 
 `UtilityFunctions` provides a specialized suite for post-processing Factor Analytic (FA) models in plant breeding. It decouples the analysis integration, allowing you to fit models with `ASReml-R` and use this package for:
 
-1.  **Structure**: `diagnose_design` validates experimental design.
-2.  **Extraction**: `fa.asreml` extracts and rotates parameters from fitted models.
-3.  **Selection**: "FAST" indices for variety advancement (OP & RMSD).
-4.  **Prediction**: Rank crosses using gametic variance ($UC = \mu + i\sigma_g$).
+1. **Structure**: `diagnose_design` validates experimental design.
+2. **Extraction**: `fa.asreml` extracts and rotates parameters from fitted models.
+3. **Selection**: "FAST" indices for variety advancement (OP & RMSD).
+4. **Prediction**: Rank crosses using gametic variance ($UC = \mu + i\sigma_g$).
 
 ## Installation
 
@@ -62,6 +62,22 @@ Prioritize crosses based on the Usefulness Criterion ($UC = \mu + i\sigma_g$).
 preds <- predict_cross_utility(parents, markers, effects, map)
 head(preds)
 ```
+
+```
+
+## Visualization Options
+The `plot()` function supports various types to inspect the model:
+
+| Type | Description |
+|------|-------------|
+| `"fast"` | **Selection**: Overall Performance (OP) vs Stability (RMSD) |
+| `"heatmap"` | **Connectivity**: Genetic Correlation Matrix between sites |
+| `"latent_reg"` | **GxE**: Latent regression showing stability drivers |
+| `"biplot"` | **Structure**: standard GGE-style biplot of scores/loadings |
+| `"vaf"` | **Quality**: Variance Accounted For (%) per site |
+| `"d_opt"` | **Network**: D-Optimality (Information content of sites) |
+| `"diff"` | **Specific Adaptation**: Interaction Class differences |
+| `"h2"` | **Reliability**: Cullis/Standard heritability comparison per site |
 
 ## References
 
