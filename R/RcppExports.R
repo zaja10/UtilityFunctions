@@ -4,8 +4,7 @@
 #' Calculate Gametic Variance for a Cross (Biparental)
 #'
 #' Computes the expected genetic variance in the F2 population derived from
-NULL
-
+#' crossing two inbred parents, accounting for linkage disequilibrium.
 #'
 #' @param p1 NumericVector. Genotype of Parent 1 (0 or 2).
 #' @param p2 NumericVector. Genotype of Parent 2 (0 or 2).

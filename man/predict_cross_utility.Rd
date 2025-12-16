@@ -2,25 +2,23 @@
 % Please edit documentation in R/analysis_genomics.R
 \name{predict_cross_utility}
 \alias{predict_cross_utility}
-\title{Predict Cross Utility (Usefulness Criterion)}
+\title{Predict Cross Utility (Genetic Variance)}
 \usage{
-predict_cross_utility(parents, markers, effects, map, i_sel = 2.06)
+predict_cross_utility(parents, effects, map, max_dist = 3)
 }
 \arguments{
-\item{parents}{Character vector of parent IDs to cross (all pairwise combinations will be generated).
-Alternatively, a dataframe with columns "Parent1" and "Parent2".}
+\item{parents}{Matrix (2 x M) of parental genotypes (scored 0, 1, 2).}
 
-\item{markers}{Matrix. Genotype matrix (n x m) with rownames matching parent IDs. Coding should be numeric (0, 1, 2) or (0, 2) for inbreds.}
+\item{effects}{Vector (M) of marker effects.}
 
-\item{effects}{Named numeric vector of marker effects (BLUPs from a Training Set).}
+\item{map}{Vector (M) of genetic map positions (in Morgans).}
 
-\item{map}{Named numeric vector of marker positions in Morgans (NOT cM).}
-
-\item{i_sel}{Numeric. Selection intensity (standardized). Default is 2.06 (Top 5%).}
+\item{max_dist}{Numeric. Maximum distance (Morgans) to consider linkage.}
 }
 \value{
-A dataframe containing the columns Parent1, Parent2, Mu, Sigma, and UC (Usefulness Criterion).
+A numeric value representing the expected variance.
 }
 \description{
-Calculates the Usefulness Criterion (UC) for potential crosses between a set of parents.
+Calculates the expected genetic variance of a biparental cross given
+parental genotypes and marker effects.
 }

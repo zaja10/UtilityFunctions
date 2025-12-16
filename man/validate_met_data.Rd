@@ -6,21 +6,6 @@
 \usage{
 validate_met_data(data, trait, genotype, env, check_numeric = TRUE)
 }
-\arguments{
-\item{data}{A dataframe.}
-
-\item{trait}{Character. Name of the response variable.}
-
-\item{genotype}{Character. Name of the genotype column.}
-
-\item{env}{Character. Name of the environment/site column.}
-
-\item{check_numeric}{Logical. Check if trait is strictly numeric? Default TRUE.}
-}
-\value{
-Invisible TRUE if valid. Stops with informative error otherwise.
-}
 \description{
-Performs robust quality checks on a Multi-Environment Trial dataset before analysis.
-Checks for missing values in key columns, data types, and structural integrity.
+Performs robust quality checks on a Multi-Environment Trial dataset.
 }

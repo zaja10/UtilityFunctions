@@ -1,18 +1,5 @@
 #' Validate MET Data Structure
 #'
-#' Performs robust quality checks on a Multi-Environment Trial dataset before analysis.
-#' Checks for missing values in key columns, data types, and structural integrity.
-#'
-#' @param data A dataframe.
-#' @param trait Character. Name of the response variable.
-#' @param genotype Character. Name of the genotype column.
-#' @param env Character. Name of the environment/site column.
-#' @param check_numeric Logical. Check if trait is strictly numeric? Default TRUE.
-#'
-#' @return Invisible TRUE if valid. Stops with informative error otherwise.
-#' @export
-#' Validate MET Data Structure
-#'
 #' Performs robust quality checks on a Multi-Environment Trial dataset.
 #'
 #' @import cli
