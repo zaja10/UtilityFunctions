@@ -12,7 +12,8 @@ Imports:
     tidyr,
     stringr,
     tibble,
-    reshape2,
+    ggplot2,
+    cli,
     MASS,
     Matrix,
     Rcpp

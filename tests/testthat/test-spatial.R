@@ -64,9 +64,12 @@ test_that("plot functions run without error", {
         Trial = rep(c("T1", "T2", "T3"), each = 20)
     )
 
-    pdf(NULL)
-    expect_silent(plot_connectivity(df, x = "Year", trace = "Genotype"))
-    expect_silent(plot_met_trend(df, x = "Year", y = "Yield"))
-    expect_silent(plot_trial_map(df, trial_val = "T1"))
-    dev.off()
+    p1 <- plot_connectivity(df, x = "Year", trace = "Genotype")
+    expect_s3_class(p1, "ggplot")
+
+    p2 <- plot_met_trend(df, x = "Year", y = "Yield")
+    expect_s3_class(p2, "ggplot")
+
+    p3 <- plot_trial_map(df, trial_val = "T1")
+    expect_s3_class(p3, "ggplot")
 })

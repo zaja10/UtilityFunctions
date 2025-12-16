@@ -43,41 +43,26 @@ double calc_cross_variance_cpp(NumericVector p1, NumericVector p2, NumericVector
   
   double variance = 0.0;
   
-  // Variance component (diagonal)
-  // Var(x) = p(1-p) * (2a)^2? No.
-  // Model: Gene count 0,1,2.
-  // F2 from AA x aa: 0.25 AA, 0.50 Aa, 0.25 aa.
-  // Values: -a, 0, a (if centered) or 0, a, 2a.
-  // Var = 0.5 * a^2.
-  // Here inputs 'effects' are usually allele substitution effects (alpha).
-  // Genetic Variance = 2 * p * (1-p) * alpha^2.
-  // For F2, p=0.5. Var = 2 * 0.25 * alpha^2 = 0.5 * alpha^2.
+  // Variance Component (Additive Variance)
+  // For an F2 population derived from inbred parents (AA x aa), the allele frequency p = 0.5.
+  // Additive Variance Var(A) = 2 * p * (1-p) * a^2 = 0.5 * a^2.
+  // Here, 'effects' represents the allele substitution effect (a).
   
   for (int idx : seg_idx) {
     double a = effects[idx];
     variance += 0.5 * a * a;
   }
   
-  // Covariance component (off-diagonal)
-  // Cov(g_i, g_j) = D_ij * alpha_i * alpha_j * (something)?
-  // For F2 from coupling phase (AB/ab): Cov = 0.5 * (1-2r) * a_i * a_j
-  // For F2 from repulsion phase (Ab/aB): Cov = -0.5 * (1-2r) * a_i * a_j
-  // Need to determine phase.
-  // P1: A A  (0 or 2?) Let's say 2 is Alt.
-  // If P1[i] == P1[j], they are in coupling (both Ref or both Alt in P1).
-  // If P1[i] != P1[j], one is Ref, one Alt -> Repulsion relative to P1?
-  // Wait. P1 contributes gamete G1. P2 contributes G2.
-  // F1 is G1/G2.
-  // Gametic Disequilibrium D_gamete in F1 = 0.25 * (1 - 2r).
-  // Genotypic CoVar in F2 = 2 * Cov_gamete = 0.5 * (1 - 2r).
-  // Sign depends on linkage phase in F1.
-  // If P1 has ++ at i,j and P2 has --, then F1 is ++/-- (Coupling).
-  // If P1 has +- and P2 has -+, then F1 is +-/ -+ (Repulsion).
-  
-  // Logic:
-  // Phase = +1 if (P1[i] == P1[j])
-  // Phase = -1 if (P1[i] != P1[j])
-  // (Assuming P1 and P2 are opposite at these loci, which they must be to segregate)
+  // Covariance Component (Linkage Disequilibrium)
+  // The covariance between two loci i and j depends on the linkage phase in the F1 parent.
+  // Cov(g_i, g_j) = 2 * Cov(gamete_i, gamete_j)
+  // Cov(gamete_i, gamete_j) = +/- 0.25 * (1 - 2r)
+  // Thus, Cov(g_i, g_j) = +/- 0.5 * (1 - 2r) * a_i * a_j
+  //
+  // Phase Determination:
+  // - Coupling (+): Parents have same alleles at both loci (e.g., P1 has AABB, P2 has aabb).
+  // - Repulsion (-): Parents have mixed alleles (e.g., P1 has AAbb, P2 has aaBB).
+  // Derived by checking if P1 has the same genotype code (0 or 2) at both loci.
   
   for (int i = 0; i < n_seg; i++) {
     for (int j = i + 1; j < n_seg; j++) {

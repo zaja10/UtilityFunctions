@@ -97,35 +97,25 @@ plot.padded_trial <- function(x, fill_col = NULL, ...) {
     col_name <- attr(x, "coords")["col"]
 
     # Helper to find first non-structural column to detect missingness
-    # We skip row, col, and any attributes
     candidate_cols <- names(x)[!names(x) %in% c(row_name, col_name)]
-    # Also skip attributes if they act like columns? No, attributes are separate.
-
-    # Usually any trait column will be NA in padded rows
-    # Heuristic: Find a column that has NAs where we padded.
-    # But we don't know the traits.
-    # Let's use the first non-coordinate column as a proxy for "Data Present"
     check_col <- candidate_cols[1]
 
     x$Status <- ifelse(is.na(x[[check_col]]),
         "Missing (Padded)", "Data Present"
     )
 
-    p <- ggplot2::ggplot(x, ggplot2::aes_string(x = col_name, y = row_name)) +
+    p <- ggplot2::ggplot(x, ggplot2::aes(x = .data[[col_name]], y = .data[[row_name]])) +
         ggplot2::theme_minimal() +
-        ggplot2::labs(title = "Trial Layout Integrity")
+        ggplot2::labs(title = "Trial Layout Integrity") +
+        ggplot2::coord_fixed()
 
     # If it's a MET, we MUST facet by the grouping columns
     if (attr(x, "is_met")) {
-        # Logic to identify group cols (heuristically or passed attributes)
-        # Ideally, store group_cols in attributes in the main function.
-        # For now, we assume the user handles faceting externally or we create a generic facet
-        # Here is a generic approach:
         p <- p + ggplot2::facet_wrap(~., scales = "free")
     }
 
     if (!is.null(fill_col)) {
-        p <- p + ggplot2::geom_tile(ggplot2::aes_string(fill = fill_col), color = "grey90")
+        p <- p + ggplot2::geom_tile(ggplot2::aes(fill = .data[[fill_col]]), color = "grey90")
     } else {
         p <- p + ggplot2::geom_tile(ggplot2::aes(fill = Status), color = "white") +
             ggplot2::scale_fill_manual(values = c(

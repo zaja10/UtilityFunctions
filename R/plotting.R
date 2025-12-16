@@ -6,8 +6,7 @@
 #' full analysis lifecycle: from Site Quality Control to Genotype Selection and
 #' Mechanistic GxE analysis.
 #'
-#' It uses **Base R graphics** to ensure zero external dependencies and maximum
-#' stability/speed, while producing publication-quality figures by default.
+#' It uses **ggplot2** to produce publication-quality figures.
 #'
 #' @param x An object of class \code{fa_model} produced by \code{fit_fa_model()}.
 #' @param type A character string specifying the visualization module. Options:
@@ -23,68 +22,24 @@
 #' }
 #' @param factor Integer or Vector. Controls which factors are visualized.
 #' \itemize{
-#'   \item For \code{"latent_reg"}: Can be a single integer (e.g., \code{2}) to see specific stability drivers, or \code{NULL} to plot all factors in a grid.
+#'   \item For \code{"latent_reg"}: Can be a single integer to see specific stability drivers, or \code{NULL} to plot all factors.
 #'   \item For \code{"biplot"}: A vector of length 2 (e.g., \code{c(1, 2)}) specifying the X and Y axes.
 #' }
 #' @param n_label Integer. The number of top-performing genotypes (sorted by OP) to automatically label. Default is 5.
-#' @param highlight Character vector. Names of specific genotypes to highlight (e.g., Check varieties). These will be rendered in **Red** with distinct symbols.
-#' @param ... Additional graphical parameters passed to the internal base R plot functions (e.g., \code{main}, \code{cex}).
+#' @param highlight Character vector. Names of specific genotypes to highlight (e.g., Check varieties).
+#' @param ... Additional arguments passed to ggplot2 themes or internally.
 #'
-#' @details
-#' \strong{1. FAST Plot (\code{type = "fast"}):}
-#' The primary tool for breeder decision-making.
-#' \itemize{
-#'   \item \strong{Y-axis (OP):} Genetic potential across the trial network. Higher is better.
-#'   \item \strong{X-axis (RMSD):} Stability. Points near 0 are stable; points far right are highly reactive to GxE.
-#'   \item \emph{Selection Strategy:} Select genotypes in the Top-Left quadrant (High OP, Low RMSD).
-#' }
-#'
-#' \strong{2. Latent Regression (\code{type = "latent_reg"}):}
-#' Visualizes *why* a variety is unstable.
-#' \itemize{
-#'   \item \strong{Factor 1:} Represents general potential. Slopes indicate responsiveness to high-yielding environments.
-#'   \item \strong{Factor k > 1:} Represents specific GxE drivers (e.g., drought, heat).
-#'   \item \strong{The "Peeling" Logic:} For k > 1, the function mathematically subtracts the effects of previous factors. The plot shows the \emph{deviation} from expected performance. A flat line means the variety is stable regarding that specific stressor.
-#' }
-#'
-#' \strong{3. Biplot (\code{type = "biplot"}):}
-#' A GGE-style overview.
-#' \itemize{
-#'   \item \strong{Vectors (Green):} Environments. The angle between vectors approximates their genetic correlation.
-#'   \item \strong{Points:} Genotypes.
-#'   \item \strong{Hull (Blue):} The convex hull connects the outermost genotypes. Genotypes on the hull are the "winners" in the sectors formed by perpendicular lines (not drawn to reduce clutter).
-#' }
-#'
-#' \strong{4. Heatmap (\code{type = "heatmap"}):}
-#' Displays the Genetic Correlation matrix ($C = D^{-1/2} G D^{-1/2}$).
-#' \itemize{
-#'   \item \strong{Red:} Negative correlation (Crossover GxE).
-#'   \item \strong{Blue:} Positive correlation (Consistent ranking).
-#'   \item \strong{White:} Zero correlation (Independent environments).
-#'   \item Use this to identify "Mega-Environments" (blocks of blue).
-#' }
-#'
-#' @return No return value, called for side effects (plotting).
+#' @return A ggplot object.
 #'
 #' @seealso \code{\link{fit_fa_model}}, \code{\link{get_d_optimality}}, \code{\link{get_i_classes}}, \code{\link{compare_h2}}
 #'
-#' @examples
-#' \dontrun{
-#' # Standard Selection View
-#' plot(results, type = "fast", n_label = 5, highlight = c("CheckA", "CheckB"))
-#'
-#' # Investigate GxE Drivers (Factor 2)
-#' plot(results, type = "latent_reg", factor = 2)
-#'
-#' # View Network Structure
-#' plot(results, type = "biplot", factor = c(1, 2))
-#' plot(results, type = "heatmap")
-#' }
+#' @import ggplot2
+#' @importFrom dplyr filter mutate arrange slice_head inner_join left_join select
+#' @importFrom tibble rownames_to_column
+#' @importFrom tidyr pivot_longer pivot_wider
+#' @importFrom ggrepel geom_text_repel
 #' @export
 plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...) {
-  old_par <- par(no.readonly = TRUE)
-  on.exit(par(old_par))
-
   if (type == "fast") {
     .plot_fast(x, n_label, highlight)
   } else if (type == "heatmap") {
@@ -112,181 +67,268 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
   if (is.null(x$fast)) stop("No FAST data available (Genotype scores missing).")
 
   df <- x$fast
-  top <- head(df$Genotype, n)
-  col <- rep("grey60", nrow(df))
-  bg <- rep("grey95", nrow(df))
-  pch <- rep(21, nrow(df))
-  is_h <- df$Genotype %in% h
-  is_t <- df$Genotype %in% top
-  bg[is_t] <- "#3498db"
-  col[is_t] <- "#2980b9"
-  bg[is_h] <- "#e74c3c"
-  col[is_h] <- "#c0392b"
-  pch[is_h] <- 23
 
-  par(mar = c(5, 5, 4, 2))
-  plot(df$RMSD, df$OP, pch = pch, bg = bg, col = col, xlab = "Stability (RMSD)", ylab = "Performance (OP)", main = "FAST Selection")
-  grid()
-  abline(h = 0, v = mean(df$RMSD, na.rm = T), lty = 2, col = "grey")
-  lbl <- which(is_h | is_t)
-  if (length(lbl) > 0) text(df$RMSD[lbl], df$OP[lbl], labels = df$Genotype[lbl], pos = 3, cex = 0.7)
+  # Improve Labeling Logic
+  df <- df %>%
+    mutate(
+      Type = case_when(
+        Genotype %in% h ~ "Highlight",
+        Genotype %in% head(df$Genotype, n) ~ "Top",
+        TRUE ~ "Other"
+      )
+    )
+
+  mean_rmsd <- mean(df$RMSD, na.rm = TRUE)
+
+  p <- ggplot(df, aes(x = RMSD, y = OP)) +
+    geom_vline(xintercept = mean_rmsd, linetype = "dashed", color = "grey50") +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+    geom_point(aes(fill = Type, size = Type, shape = Type), color = "black") +
+    scale_fill_manual(values = c("Highlight" = "#e74c3c", "Top" = "#3498db", "Other" = "grey95")) +
+    scale_shape_manual(values = c("Highlight" = 23, "Top" = 21, "Other" = 21)) +
+    scale_size_manual(values = c("Highlight" = 3, "Top" = 3, "Other" = 2)) +
+    labs(x = "Stability (RMSD)", y = "Performance (OP)", title = "FAST Selection") +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+
+  # Add Labels
+  label_df <- df %>% filter(Type != "Other")
+  if (nrow(label_df) > 0) {
+    if (requireNamespace("ggrepel", quietly = TRUE)) {
+      p <- p + ggrepel::geom_text_repel(data = label_df, aes(label = Genotype), size = 3, max.overlaps = 20)
+    } else {
+      p <- p + geom_text(data = label_df, aes(label = Genotype), vjust = -1, size = 3)
+    }
+  }
+
+  return(p)
 }
 
 .plot_heat <- function(x) {
-  cor <- x$matrices$Cor
-  p <- ncol(cor)
-  rev <- cor[, p:1]
-  par(mar = c(6, 6, 4, 2))
-  image(1:p, 1:p, rev, axes = F, col = hcl.colors(20, "RdYlGn"), breaks = seq(-1, 1, l = 21), main = "Correlation")
-  axis(1, at = 1:p, labels = colnames(cor), las = 2, cex.axis = 0.7)
-  axis(2, at = 1:p, labels = rev(rownames(cor)), las = 1, cex.axis = 0.7)
-  for (i in 1:p) for (j in 1:p) if (rev[i, j] < 0.99) text(i, j, sprintf("%.2f", rev[i, j]), cex = 0.6)
+  cor_mat <- x$matrices$Cor
+
+  # Melt for ggplot
+  df_melt <- as.data.frame(cor_mat) %>%
+    rownames_to_column("Env1") %>%
+    pivot_longer(cols = -Env1, names_to = "Env2", values_to = "Correlation")
+
+  # Order factors to match matrix order
+  df_melt$Env1 <- factor(df_melt$Env1, levels = rownames(cor_mat))
+  df_melt$Env2 <- factor(df_melt$Env2, levels = colnames(cor_mat))
+
+  ggplot(df_melt, aes(x = Env2, y = Env1, fill = Correlation)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = sprintf("%.2f", Correlation)), size = 3) +
+    scale_fill_distiller(palette = "RdYlGn", limit = c(-1, 1), direction = 1) +
+    theme_minimal() +
+    labs(x = NULL, y = NULL, title = "Genetic Correlation Matrix") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
 .plot_reg <- function(x, fac, h, n) {
-  # SAFETY GATE
   if (is.null(x$scores)) stop("No Genotype scores available for Latent Regression.")
 
   k <- x$meta$k
   if (is.null(fac)) fac <- 1:k
-  if (length(fac) > 1) par(mfrow = c(ceiling(length(fac) / 2), min(length(fac), 2)))
+
   L <- x$loadings$rotated
   S <- x$scores$rotated
   Uc <- S %*% t(L)
-  tgt <- unique(c(head(rownames(S), n), h))
+
+  # Prepare data for plotting
+  plot_data <- list()
+
+  # Determine target genotypes
+  all_gens <- rownames(S)
+  top_n <- head(all_gens, n)
+  tgt <- unique(c(top_n, h))
 
   for (f in fac) {
     if (f > k) next
+
+    # Calculate Y (deviations for f > 1)
     Y <- if (f > 1) Uc - (S[, 1:(f - 1)] %*% t(L[, 1:(f - 1)])) else Uc
     xv <- L[, f]
-    ysub <- Y[tgt, , drop = F]
 
-    par(mar = c(4, 4, 3, 1))
-    plot(1, type = "n", xlim = range(xv) * 1.1, ylim = range(ysub) * 1.1, xlab = paste("Load", f), ylab = "Effect", main = paste("Factor", f))
-    grid()
-    abline(h = 0, lty = 2)
-    axis(1, at = xv, labels = F, tck = -0.02, col = "green")
+    # We need to construct a long dataframe: Genotype, Env_Load, Value, Factor
+    # But strictly, we only plot lines for target genotypes.
 
-    for (g in tgt) {
-      sl <- S[g, f]
-      cc <- if (g %in% h) "red" else "navy"
-      points(xv, Y[g, ], pch = 19, col = adjustcolor(cc, 0.3), cex = 0.7)
-      abline(0, sl, col = cc)
-      text(max(xv), sl * max(xv), labels = g, pos = 4, cex = 0.7, col = cc)
-    }
+    # Dataframe for segments/lines
+    # For each genotype g, intercept = 0, slope = score[g, f]
+    # x range is range(xv)
+
+    gens_saf <- intersect(tgt, rownames(S))
+
+    slopes <- data.frame(
+      Genotype = gens_saf,
+      Slope = S[gens_saf, f],
+      Factor = paste("Factor", f)
+    ) %>%
+      mutate(ColorGroup = ifelse(Genotype %in% h, "Highlight", "Top"))
+
+    # Create points for specific environments?
+    # The original plot shows the actual "Y" values as points at the xv locations
+    # So we need Y[g, ] vs xv
+
+    # Melt Y[tgt, ]
+    y_sub <- Y[gens_saf, , drop = FALSE]
+
+    pts_df <- as.data.frame(y_sub) %>%
+      rownames_to_column("Genotype") %>%
+      pivot_longer(-Genotype, names_to = "Env", values_to = "Effect")
+
+    # Join with loadings (xv)
+    # Loadings is a matrix, convert to df
+    load_df <- data.frame(Env = rownames(L), Loading = xv)
+
+    pts_df <- pts_df %>%
+      left_join(load_df, by = "Env") %>%
+      mutate(Factor = paste("Factor", f)) %>%
+      mutate(ColorGroup = ifelse(Genotype %in% h, "Highlight", "Top"))
+
+    plot_data[[as.character(f)]] <- list(slopes = slopes, points = pts_df)
   }
+
+  # Combine
+  all_slopes <- do.call(rbind, lapply(plot_data, `[[`, "slopes"))
+  all_points <- do.call(rbind, lapply(plot_data, `[[`, "points"))
+
+  # Calculate line endpoints for geom_segment to mimic abline
+  # x range per factor
+  ranges <- all_points %>%
+    group_by(Factor) %>%
+    summarize(Min = min(Loading), Max = max(Loading))
+
+  all_slopes <- all_slopes %>%
+    left_join(ranges, by = "Factor")
+
+  ggplot() +
+    geom_point(data = all_points, aes(x = Loading, y = Effect, color = ColorGroup), alpha = 0.5) +
+    geom_abline(data = all_slopes, aes(intercept = 0, slope = Slope, color = ColorGroup), alpha = 0.8) +
+    facet_wrap(~Factor, scales = "free") +
+    scale_color_manual(values = c("Highlight" = "red", "Top" = "navy")) +
+    theme_minimal() +
+    labs(title = "Latent Regression", x = "Environmental Loading", y = "GxE Deviation") +
+    geom_text(
+      data = all_slopes, aes(x = Max, y = Slope * Max, label = Genotype, color = ColorGroup),
+      hjust = 0, vjust = 0.5, size = 3, check_overlap = TRUE
+    )
 }
 
 .plot_biplot <- function(x, fac, h) {
-  # SAFETY GATE
   if (is.null(x$scores)) stop("No Genotype scores available for Biplot.")
 
   L <- x$loadings$rotated[, fac]
   S <- x$scores$rotated[, fac]
+
+  # Convert to dataframes
+  df_scores <- as.data.frame(S)
+  colnames(df_scores) <- c("X", "Y")
+  df_scores$Genotype <- rownames(S)
+  df_scores$Type <- ifelse(df_scores$Genotype %in% h, "Highlight", "Normal")
+
+  # Scaling
   sf <- max(abs(S)) / max(abs(L)) * 0.8
-  Ls <- L * sf
-  lim <- range(rbind(Ls, S))
+  df_load <- as.data.frame(L * sf)
+  colnames(df_load) <- c("X", "Y")
+  df_load$Env <- rownames(L)
 
-  par(mar = c(5, 5, 4, 2))
-  plot(1, type = "n", xlim = lim * 1.1, ylim = lim * 1.1, asp = 1, xlab = paste("F", fac[1]), ylab = paste("F", fac[2]), main = "Biplot")
-  grid()
-  abline(h = 0, v = 0, lty = 2, col = "grey")
-  arrows(0, 0, Ls[, 1], Ls[, 2], col = "darkgreen", length = 0.1)
-  text(Ls, labels = rownames(L), col = "darkgreen", pos = 4, cex = 0.7)
+  # Hull
+  hull_idx <- chull(df_scores$X, df_scores$Y)
+  hull_df <- df_scores[hull_idx, ]
 
-  bg <- rep("grey90", nrow(S))
-  pch <- rep(21, nrow(S))
-  is_h <- rownames(S) %in% h
-  bg[is_h] <- "red"
-  pch[is_h] <- 23
-  points(S, pch = pch, bg = bg, cex = 0.8)
-  if (any(is_h)) text(S[is_h, ], labels = rownames(S)[is_h], pos = 3, cex = 0.7)
+  p <- ggplot(df_scores, aes(x = X, y = Y)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey") +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
+    # Hull
+    geom_polygon(data = hull_df, fill = NA, color = "navy", linetype = "dashed") +
+    # Genotypes
+    geom_point(aes(fill = Type, size = Type, shape = Type), color = "black") +
+    scale_fill_manual(values = c("Highlight" = "red", "Normal" = "grey90")) +
+    scale_shape_manual(values = c("Highlight" = 23, "Normal" = 21)) +
+    scale_size_manual(values = c("Highlight" = 3, "Normal" = 2)) +
+    # Vectors
+    geom_segment(
+      data = df_load, aes(x = 0, y = 0, xend = X, yend = Y),
+      arrow = arrow(length = unit(0.2, "cm")), color = "darkgreen"
+    ) +
+    geom_text(data = df_load, aes(label = Env), color = "darkgreen", size = 3, hjust = -0.2) +
+    labs(x = paste("Factor", fac[1]), y = paste("Factor", fac[2]), title = "GxE Biplot") +
+    theme_minimal() +
+    coord_fixed()
 
-  hpts <- chull(S)
-  lines(S[c(hpts, hpts[1]), ], col = "navy", lty = 2)
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(data = filter(df_scores, Type == "Highlight"), aes(label = Genotype), box.padding = 0.5)
+  }
+
+  return(p)
 }
+
 .plot_vaf <- function(x) {
-  df <- x$var_comp$vaf[order(x$var_comp$vaf$VAF), ]
-  col <- ifelse(df$VAF < 50, "red", "blue")
-  par(mar = c(5, 7, 4, 2))
-  barplot(df$VAF, names.arg = df$Site, horiz = T, las = 1, col = col, xlab = "VAF %", main = "Site Quality")
-  abline(v = 80, lty = 2)
+  df <- x$var_comp$vaf
+  df$Site <- factor(df$Site, levels = df$Site[order(df$VAF)])
+
+  ggplot(df, aes(x = VAF, y = Site)) +
+    geom_col(aes(fill = VAF < 50)) +
+    geom_vline(xintercept = 80, linetype = "dashed") +
+    scale_fill_manual(values = c("FALSE" = "steelblue", "TRUE" = "firebrick"), guide = "none") +
+    labs(title = "Site Quality (Variance Accounted For)", x = "VAF %") +
+    theme_minimal()
 }
 
 .plot_dopt <- function(d, threshold = 1.0) {
   df <- d$site_impact
-  # Sort ascending (so highest impact sites appear at the top of the chart)
-  df <- df[order(df$Impact_Pct), ]
+  df$Site <- factor(df$Site, levels = df$Site[order(df$Impact_Pct)])
 
-  # Color Logic:
-  # Red (#e74c3c) for Redundant (below threshold)
-  # Green (#27ae60) for High Value (above threshold)
-  cols <- ifelse(df$Impact_Pct < threshold, "#e74c3c", "#27ae60")
-
-  # Canvas Setup
-  # Increase left margin (second value) to fit long site names
-  par(mar = c(5, 8, 4, 2))
-
-  # Draw Barplot
-  bp <- barplot(df$Impact_Pct,
-    names.arg = df$Site, horiz = TRUE,
-    las = 1, col = cols, border = NA,
-    xlab = "% Information Loss if Removed",
-    main = "Network Efficiency (D-Opt Contribution)"
-  )
-
-  # Add Threshold Line
-  abline(v = threshold, lty = 2, col = "grey40")
-
-  # Add Value Labels at end of bars
-  # xpd = TRUE ensures text isn't clipped if it goes outside the plot region
-  text(
-    x = df$Impact_Pct, y = bp, label = sprintf("%.1f%%", df$Impact_Pct),
-    pos = 4, cex = 0.7, xpd = TRUE
-  )
-
-  # Add Legend
-  legend("bottomright",
-    legend = c("Key Sites (Keep)", "Redundant (Review)"),
-    fill = c("#27ae60", "#e74c3c"),
-    border = NA, bty = "n", cex = 0.8
-  )
+  ggplot(df, aes(x = Impact_Pct, y = Site)) +
+    geom_col(aes(fill = Impact_Pct >= threshold)) +
+    geom_vline(xintercept = threshold, linetype = "dashed") +
+    geom_text(aes(label = sprintf("%.1f%%", Impact_Pct)), hjust = -0.2, size = 3) +
+    scale_fill_manual(
+      values = c("TRUE" = "#27ae60", "FALSE" = "#e74c3c"),
+      name = "Status", labels = c("Redundant", "Key Site")
+    ) +
+    labs(title = "Network Efficiency (D-Opt Contribution)", x = "% Information Loss if Removed") +
+    theme_minimal()
 }
 
 .plot_diff <- function(res, n, h) {
   df <- res$gen_effects
   df <- na.omit(df)
+
+  # Select Targets
   tgt <- unique(c(head(df$Genotype, n), tail(df$Genotype, n), h))
-  plot_df <- df[df$Genotype %in% tgt, ]
+  plot_df <- df %>%
+    filter(Genotype %in% tgt) %>%
+    pivot_longer(cols = c(Pred_Neg, Pred_Pos), names_to = "Class", values_to = "Value")
 
-  yl <- range(c(plot_df$Pred_Neg, plot_df$Pred_Pos))
-  par(mar = c(4, 4, 3, 6), xpd = F)
-  plot(1, type = "n", xlim = c(0.8, 2.2), ylim = yl, xaxt = "n", ylab = "Genetic Value", xlab = "", main = "Interaction Classes")
-  axis(1, at = 1:2, labels = c("Class (-)", "Class (+)"))
+  plot_df$Class <- factor(plot_df$Class, levels = c("Pred_Neg", "Pred_Pos"), labels = c("Class (-)", "Class (+)"))
+  plot_df$Type <- ifelse(plot_df$Genotype %in% h, "Highlight", "Normal")
 
-  for (i in 1:nrow(plot_df)) {
-    g <- plot_df$Genotype[i]
-    cc <- if (g %in% h) "red" else "grey50"
-    segments(1, plot_df$Pred_Neg[i], 2, plot_df$Pred_Pos[i], col = cc, lwd = if (g %in% h) 2 else 1)
-    text(1, plot_df$Pred_Neg[i], g, pos = 2, cex = 0.7, col = cc, xpd = T)
-    text(2, plot_df$Pred_Pos[i], g, pos = 4, cex = 0.7, col = cc, xpd = T)
-  }
+  ggplot(plot_df, aes(x = Class, y = Value, group = Genotype, color = Type)) +
+    geom_line(aes(linewidth = Type)) +
+    geom_point() +
+    geom_text(data = plot_df %>% filter(Class == "Class (-)"), aes(label = Genotype), hjust = 1.1, size = 3) +
+    geom_text(data = plot_df %>% filter(Class == "Class (+)"), aes(label = Genotype), hjust = -0.1, size = 3) +
+    scale_color_manual(values = c("Highlight" = "red", "Normal" = "grey50")) +
+    scale_linewidth_manual(values = c("Highlight" = 1, "Normal" = 0.5)) +
+    theme_minimal() +
+    labs(title = "Crossover Interaction", x = NULL, y = "Genetic Value") +
+    theme(legend.position = "none")
 }
 
 
 #' Plot Spatial Field Map (Robust)
 #'
 #' Maps raw data (from dataframe) or residuals (from model) to the physical field layout.
-#' Visualizes missing data with a distinct background color.
 #'
 #' @param input An `asreml` model object OR a `data.frame`.
-#' @param row Column name for Field Row (default "Row").
-#' @param col Column name for Field Column (default "Column").
-#' @param attribute String. What to plot?
-#'        - If input is data.frame: The column name (e.g. "Yield").
-#'        - If input is asreml: "residuals" (default) or "fitted".
+#' @param row Column name for Field Row.
+#' @param col Column name for Field Column.
+#' @param attribute String. What to plot? "Yield", "residuals", "fitted".
 #' @export
 plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield") {
+  # Data Extraction Logic
   if (inherits(input, "asreml")) {
     if (attribute == "Yield") attribute <- "residuals"
     data_name <- as.character(input$call$data)
@@ -294,159 +336,110 @@ plot_spatial <- function(input, row = "Row", col = "Column", attribute = "Yield"
     df <- get(data_name)
 
     if (attribute == "fitted") {
-      vals <- fitted(input)
-      main_title <- "Spatial Map: Fitted Values"
+      df$Value_To_Plot <- fitted(input)
     } else {
-      vals <- resid(input)
-      main_title <- "Spatial Map: Residuals"
+      df$Value_To_Plot <- resid(input)
     }
-
-    if (length(vals) == nrow(df)) {
-      df$Value_To_Plot <- vals
-    } else {
-      warning("Residual mismatch. Padding with NA.")
-      df$Value_To_Plot <- rep(NA, nrow(df))
-      df$Value_To_Plot[1:length(vals)] <- vals
-    }
+    main_title <- paste("Spatial Map:", attribute)
   } else if (inherits(input, "data.frame")) {
     df <- input
     if (is.null(df[[attribute]])) stop(paste("Column", attribute, "not found."))
-    vals <- df[[attribute]]
-    df$Value_To_Plot <- vals
+    df$Value_To_Plot <- df[[attribute]]
     main_title <- paste("Spatial Map:", attribute)
   } else {
     stop("Input must be an asreml model or a dataframe.")
   }
 
-  r_vals <- as.numeric(as.character(df[[row]]))
-  c_vals <- as.numeric(as.character(df[[col]]))
-  n_r <- max(r_vals, na.rm = TRUE)
-  n_c <- max(c_vals, na.rm = TRUE)
+  # Ensure Numeric
+  df[[row]] <- as.numeric(as.character(df[[row]]))
+  df[[col]] <- as.numeric(as.character(df[[col]]))
 
-  field_mat <- matrix(NA, nrow = n_r, ncol = n_c)
-  for (i in 1:nrow(df)) {
-    if (!is.na(r_vals[i]) & !is.na(c_vals[i])) field_mat[r_vals[i], c_vals[i]] <- df$Value_To_Plot[i]
-  }
+  # Determine bounds
+  # We might want to fill missing spots explicitly, but geom_tile handles NA by creating holes,
+  # or we can use complete().
+  # Better to use complete() to show the full grid structure clearly.
 
-  layout(matrix(1:2, ncol = 2), widths = c(4, 1))
-  par(mar = c(3, 3, 3, 1))
+  # Only complete if we have strict limits?
+  # Let's trust ggplot to plot what's there, but maybe implicit missingness is hard to see.
+  # Let's treat implicit missing as white/grey.
 
-  is_diverging <- (min(vals, na.rm = TRUE) < 0 && max(vals, na.rm = TRUE) > 0)
-  cols <- if (is_diverging) hcl.colors(20, "Blue-Red 3") else hcl.colors(20, "Spectral", rev = TRUE)
-
-  field_rev <- field_mat[n_r:1, ]
-  image(1:n_c, 1:n_r, t(field_rev), axes = FALSE, col = NA, main = main_title, xlab = "", ylab = "")
-  rect(0.5, 0.5, n_c + 0.5, n_r + 0.5, col = "grey90", border = NA)
-  image(1:n_c, 1:n_r, t(field_rev), add = TRUE, col = cols)
-  box()
-
-  # Plot Scale Bar (FIXED LOGIC)
-  par(mar = c(3, 0, 3, 3))
-
-  # Dummy strip 1-20
-  image(1, 1:20, t(as.matrix(1:20)), axes = FALSE, xlab = "", ylab = "", col = cols)
-
-  # === FIX IS HERE ===
-  data_range <- range(vals, na.rm = TRUE)
-  min_v <- data_range[1]
-  max_v <- data_range[2]
-
-  # 1. Calculate the 'pretty' label values based on the data range
-  pretty_vals <- pretty(data_range, n = 5)
-
-  # Filter for values within the actual range (helpful for edge cases)
-  pretty_vals <- pretty_vals[pretty_vals >= min_v & pretty_vals <= max_v]
-
-  # 2. Map these values to the 1-20 coordinate system of the legend image
-  # Formula: Position = (Value - Min) / Range * (LegendMax - 1) + 1
-  if (max_v > min_v) {
-    at_locs <- (pretty_vals - min_v) / (max_v - min_v) * 19 + 1
-  } else {
-    # Handle case where all values are the same
-    at_locs <- 10 # Center
-    pretty_vals <- unique(c(min_v, max_v))[1] # Use the single unique value
-  }
-
-  # 3. Draw axis using the matching locations and labels
-  axis(4, at = at_locs, labels = round(pretty_vals, 2), las = 1)
-  # ===================
-
-  mtext("Grey = Missing", side = 1, line = 1, cex = 0.6)
-  layout(1)
+  ggplot(df, aes(x = .data[[col]], y = .data[[row]], fill = Value_To_Plot)) +
+    geom_tile() +
+    scale_fill_distiller(palette = "Spectral", na.value = "grey90", direction = -1) +
+    theme_minimal() +
+    labs(title = main_title, x = col, y = row) +
+    coord_fixed()
 }
 
 #' Plot Heritability/Reliability Comparison
 #'
-#' @description
-#' Visualizes the output of \code{compare_h2} using a grouped bar chart.
-#' Compares different metrics (Cullis, Oakey, Standard) across sites.
-#'
-#' @param x An object of class \code{h2_comparison} produced by \code{compare_h2()}.
-#' @param ... Additional arguments passed to \code{barplot}.
-#'
-#' @importFrom graphics barplot legend par text abline box
-#' @importFrom grDevices hcl.colors
+#' @param x An object of class \code{h2_comparison}.
+#' @param ... Additional arguments.
 #' @export
 plot.h2_comparison <- function(x, ...) {
-  # x has columns: Site, Method, Value, Vg
-  
-  # Check structure
-  if(!all(c("Site", "Method", "Value") %in% names(x))) stop("Invalid h2_comparison object.")
-  
-  # Pivot to wide format for barplot matrix: Rows = Methods, Cols = Sites
-  # Use base R reshape
-  wide <- reshape(x, idvar = "Site", timevar = "Method", v.names = "Value", direction = "wide")
-  
-  # Clean column names (remove "Value.")
-  names(wide) <- gsub("Value\\.", "", names(wide))
-  
-  # Matrix for barplot
-  methods <- unique(x$Method)
-  sites <- unique(x$Site)
-  
-  # Ensure matching order
-  mat <- as.matrix(wide[, methods, drop=FALSE])
-  rownames(mat) <- wide$Site
-  
-  # Sort by first method values (descending)
-  ord <- order(mat[,1], decreasing = FALSE) # Ascending for horiz plot (top is highest)
-  mat <- mat[ord, , drop=FALSE]
-  
-  # Plotting
-  old_par <- par(no.readonly = TRUE); on.exit(par(old_par))
-  
-  # Colors
-  cols <- hcl.colors(length(methods), "Zissou 1")
-  
-  # Layout
-  par(mar = c(5, 8, 4, 10), xpd = TRUE) # Right margin for legend
-  
-  bp <- barplot(t(mat), 
-          beside = TRUE, 
-          horiz = TRUE, 
-          col = cols, 
-          border = NA,
-          las = 1,
-          xlab = "Reliability / Heritability",
-          main = "Site Quality Comparison",
-          xlim = c(0, 1),
-          ...)
-  
-  # Gridlines
-  abline(v = seq(0, 1, 0.2), col = "white", lwd = 0.5)
-  box()
-  
-  # Legend
-  legend("right", 
-         inset = c(-0.35, 0),
-         legend = methods, 
-         fill = cols, 
-         border = NA, 
-         bty = "n", 
-         title = "Metric")
-         
-  # Add Threshold
-  abline(v = 0.05, col="red", lty=2) # Random threshold often used? Or 0.8?
-  # Let's not add arbitrary lines
+  if (!all(c("Site", "Method", "Value") %in% names(x))) stop("Invalid h2_comparison object.")
+
+  # Order sites by the first method?
+  # Let's find mean value per site to order
+  site_order <- x %>%
+    group_by(Site) %>%
+    summarize(MeanVal = mean(Value, na.rm = TRUE)) %>%
+    arrange(MeanVal) %>%
+    pull(Site)
+
+  x$Site <- factor(x$Site, levels = site_order)
+
+  ggplot(x, aes(x = Site, y = Value, fill = Method)) +
+    geom_col(position = "dodge", alpha = 0.8) +
+    coord_flip() +
+    scale_fill_brewer(palette = "Set2") +
+    geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
+    theme_minimal() +
+    labs(title = "Site Quality Comparison", y = "Reliability / Heritability")
 }
 
+#' Flexible Trial Map
+#' @export
+plot_trial_map <- function(data, trial_val = NULL, trial_col = "Trial",
+                           row = "Row", col = "Column", val = "Yield") {
+  plot_data <- if (!is.null(trial_val)) data[data[[trial_col]] == trial_val, ] else data
+  title_sub <- if (!is.null(trial_val)) paste(trial_val) else "Single Site"
+
+  if (all(c(row, col) %in% names(plot_data))) {
+    # Spatial
+    ggplot(plot_data, aes(x = .data[[col]], y = .data[[row]], fill = .data[[val]])) +
+      geom_tile() +
+      scale_fill_distiller(palette = "Spectral", direction = -1) +
+      theme_minimal() +
+      labs(title = paste("Trial Map:", title_sub), x = col, y = row) +
+      coord_fixed()
+  } else {
+    # 1D Fallback
+    plot_data$Index <- 1:nrow(plot_data)
+    ggplot(plot_data, aes(x = Index, y = .data[[val]])) +
+      geom_point(aes(color = .data[[val]])) +
+      geom_line(alpha = 0.3) +
+      scale_color_distiller(palette = "Spectral") +
+      theme_minimal() +
+      labs(title = paste("Linear Plot:", title_sub))
+  }
+}
+
+#' Plot MET Trends
+#' @export
+plot_met_trend <- function(data, x = "Year", y = "Yield", main = "Yield Trend", ...) {
+  if (!all(c(x, y) %in% names(data))) stop("Variables not found.")
+
+  # Ensure numeric X for trend line
+  data$X_Num <- if (is.numeric(data[[x]])) data[[x]] else as.numeric(as.character(data[[x]]))
+
+  # Combined Plot: Boxplot + Trend Line
+  ggplot(data, aes(x = factor(.data[[x]]), y = .data[[y]])) +
+    geom_boxplot(fill = "lightgreen", alpha = 0.5, outlier.shape = NA) +
+    geom_jitter(width = 0.2, alpha = 0.1) +
+    stat_summary(fun = mean, geom = "line", aes(group = 1), color = "blue", size = 1.2) +
+    stat_summary(fun = mean, geom = "point", color = "blue", size = 3) +
+    geom_smooth(aes(x = as.numeric(factor(.data[[x]])), y = .data[[y]]), method = "lm", color = "red", linetype = "dashed", se = FALSE) +
+    theme_minimal() +
+    labs(title = main, x = x, y = y)
+}
