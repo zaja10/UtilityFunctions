@@ -1,4 +1,4 @@
-#' Process Weather Indices for Envirotyping
+﻿#' Process Weather Indices for Envirotyping
 #'
 #' Aggregates daily weather data into biological windows (Vegetative, Flowering, Grain Fill)
 #' to create environmental covariates (ECs) suitable for Factorial Regression models.
@@ -87,3 +87,4 @@ process_weather_indices <- function(weather_data, trial_metadata, t_base = 0, he
     mat <- as.matrix(ec_df[, -1])
     return(mat)
 }
+

@@ -6,7 +6,6 @@ Author: Zachary Aldiss [aut, cre]
 Maintainer: Zachary Aldiss <zaldiss@illinois.edu>
 Description: A specialized suite for processing factor analytic models. Implements "FAST" selection tools, design diagnostics, and cross prediction utilities involving gametic variance.
 Depends: 
-    asreml,
     R (>= 3.5.0)
 Imports: 
     dplyr,
@@ -27,7 +26,8 @@ Suggests:
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
-    agridat
+    agridat,
+    asreml
 VignetteBuilder: knitr
 URL: https://github.com/zaja10/UtilityFunctions
 BugReports: https://github.com/zaja10/UtilityFunctions/issues

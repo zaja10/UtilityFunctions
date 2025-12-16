@@ -1,5 +1,5 @@
----
-title: "UtilityFunctions: Complete Workflow"
+﻿---
+title: "Stage 2: Factor Analytic Models (MET)"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{UtilityFunctions: Complete Workflow}
@@ -75,12 +75,12 @@ model_fit <- asreml(
 ```
 
 ## 3. Post-Processing (FAST)
-Use `fa.asreml` to extract parameters, perform rotation, and calculate selection indices.
+Use `fit_fa_model` to extract parameters, perform rotation, and calculate selection indices.
 
 ```{r, eval = FALSE}
 # Extract & Rotate (Varimax)
 # 'classify' must match the FA term in the model
-model_fa <- fa.asreml(model_fit, classify = "fa(env, 2):gen")
+model_fa <- fit_fa_model(model_fit, classify = "fa(env, 2):gen")
 ```
 
 ```{r sim_results, include=FALSE}
@@ -116,7 +116,7 @@ res_obj <- list(
 # Add mock Site BLUPs (long format)
 res_obj$scores$blups_in_met <- expand.grid(Genotype = gens, Site = sites)
 res_obj$scores$blups_in_met$Pred_Value <- rnorm(nrow(res_obj$scores$blups_in_met))
-class(res_obj) <- "fa_asreml"
+class(res_obj) <- "fa_model"
 ```
 
 ```{r assign_sim, echo=FALSE}
@@ -196,3 +196,4 @@ head(cross_predictions)
 ```
 
 The `UC` column helps prioritize which crosses to make to maximize genetic gain in the next generation.
+

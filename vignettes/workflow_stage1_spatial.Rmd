@@ -1,5 +1,5 @@
----
-title: "MET Diagnostics & Visualization"
+﻿---
+title: "Stage 1: Spatial Diagnostics & Analysis"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{MET Diagnostics & Visualization}
@@ -39,32 +39,32 @@ set.seed(123)
 years <- 2018:2022
 data <- data.frame()
 
-for(y in years) {
-  for(l in 1:3) {
+for (y in years) {
+  for (l in 1:3) {
     # Approx 50 genotypes per trial
     # Some overlap between years (connectivity)
     genos <- paste0("G", sample(1:100, 50))
-    
+
     trial_df <- data.frame(
       Year = y,
       Trial = paste0("Loc", l, "_", y),
       Genotype = genos,
-      Row = rep(1:5, each=10),
+      Row = rep(1:5, each = 10),
       Column = rep(1:10, 5),
-      Yield_bu = rnorm(50, mean=60 + (y-2018)*2, sd=10) # Genetic gain
+      Yield_bu = rnorm(50, mean = 60 + (y - 2018) * 2, sd = 10) # Genetic gain
     )
-    
+
     # Introduce some missing spatial data in one trial
-    if(y == 2019 && l == 1) {
+    if (y == 2019 && l == 1) {
       trial_df <- trial_df[-c(5, 15, 25), ] # Remove 3 plots
     }
-    
+
     data <- rbind(data, trial_df)
   }
 }
 
 # Convert Yield to t/ha
-data$Yield <- convert_buac_to_tha(data$Yield_bu, crop="wheat")
+data$Yield <- convert_buac_to_tha(data$Yield_bu, crop = "wheat")
 head(data)
 ```
 
@@ -77,8 +77,10 @@ Connectivity is vital for multi-year analysis. If two years share no genotypes, 
 The default method checks the raw count of shared genotypes. `order_by = "Year"` ensures the axes are chronological.
 
 ```{r conn_count}
-plot_connectivity(data, x = "Year", trace = "Genotype", 
-                  method = "count", order_by = "Year")
+plot_connectivity(data,
+  x = "Year", trace = "Genotype",
+  method = "count", order_by = "Year"
+)
 ```
 
 ### Jaccard Connectivity (Normalized)
@@ -86,8 +88,10 @@ plot_connectivity(data, x = "Year", trace = "Genotype",
 If trial sizes vary significantly, use the Jaccard index (Intersection / Union) to get a normalized measure of overlap (0 to 1).
 
 ```{r conn_jacc}
-plot_connectivity(data, x = "Year", trace = "Genotype", 
-                  method = "jaccard", order_by = "Year")
+plot_connectivity(data,
+  x = "Year", trace = "Genotype",
+  method = "jaccard", order_by = "Year"
+)
 ```
 
 # 3. Spatial Integrity
@@ -98,8 +102,10 @@ You can inspect the layout of any specific trial.
 
 ```{r map_raw}
 # A complete trial
-plot_trial_map(data, trial_val = "Loc1_2018", trial_col = "Trial", 
-               row = "Row", col = "Column", val = "Yield")
+plot_trial_map(data,
+  trial_val = "Loc1_2018", trial_col = "Trial",
+  row = "Row", col = "Column", val = "Yield"
+)
 ```
 
 ### Padding Missing Plots
@@ -108,8 +114,10 @@ In `Loc1_2019`, we artificially removed plots. Let's visualize it to see the gap
 
 ```{r map_gap}
 # A trial with gaps
-plot_trial_map(data, trial_val = "Loc1_2019", trial_col = "Trial", 
-               row = "Row", col = "Column", val = "Yield")
+plot_trial_map(data,
+  trial_val = "Loc1_2019", trial_col = "Trial",
+  row = "Row", col = "Column", val = "Yield"
+)
 ```
 
 ### Bulk Padding
@@ -136,3 +144,4 @@ plot_met_trend(data, x = "Year", y = "Yield", main = "Wheat Yield Trend")
 ```
 
 The regression statistics in the top-left legend quantify the genetic gain (t/ha per year).
+
