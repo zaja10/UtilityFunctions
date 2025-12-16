@@ -15,7 +15,7 @@ theme_genetics <- function(base_size = 12, base_family = "") {
             plot.title = element_text(face = "bold", size = rel(1.2), hjust = 0),
             plot.subtitle = element_text(size = rel(1), color = "grey40", margin = margin(b = 10)),
             axis.title = element_text(face = "bold", size = rel(0.9)),
-            axis.text = element_text(color = "grey30"),
+            axis.text = element_text(color = "grey30", size = rel(0.8)),
 
             # Background & Grid
             panel.background = element_rect(fill = "white", color = NA),

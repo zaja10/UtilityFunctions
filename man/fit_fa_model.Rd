@@ -4,7 +4,13 @@
 \alias{fit_fa_model}
 \title{Extract and Rotate Factor Analytic Model Parameters}
 \usage{
-fit_fa_model(model, classify, psi_term = NULL, rotate = TRUE)
+fit_fa_model(
+  model,
+  classify,
+  psi_term = NULL,
+  rotate = TRUE,
+  annotation = NULL
+)
 }
 \arguments{
 \item{model}{A fitted object of class \code{asreml}.}
@@ -14,6 +20,9 @@ fit_fa_model(model, classify, psi_term = NULL, rotate = TRUE)
 \item{psi_term}{Character (Optional). Specific variance term for RR models.}
 
 \item{rotate}{Logical. Perform SVD rotation to PC solution? Default TRUE.}
+
+\item{annotation}{Optional dataframe or named list to annotate sites immediately.
+Passed to \code{\link{annotate_model}}.}
 }
 \value{
 An object of class \code{fa_model} with 'loadings', 'scores', 'fast', and 'variance'.

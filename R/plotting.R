@@ -242,13 +242,13 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
       if (has_anno) {
         geom_segment(
           data = df_lod, site_mapping_arrow,
-          arrow = arrow(length = unit(0.2, "cm"), type = "closed"), size = 1
+          arrow = arrow(length = unit(0.2, "cm"), type = "closed"), linewidth = 1
         )
       } else {
         geom_segment(
           data = df_lod, site_mapping_arrow,
           arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
-          color = "#2c3e50", size = 1
+          color = "#2c3e50", linewidth = 1
         )
       }
     } +
@@ -259,13 +259,15 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
         if (has_anno) {
           ggrepel::geom_text_repel(
             data = df_lod, site_mapping_text,
-            fontface = "bold", size = 3.5, bg.color = "white", bg.r = 0.15
+            fontface = "bold", size = 3.5, bg.color = "white", bg.r = 0.15,
+            max.overlaps = 15
           )
         } else {
           ggrepel::geom_text_repel(
             data = df_lod, site_mapping_text,
             color = "#2c3e50", fontface = "bold", size = 3.5,
-            bg.color = "white", bg.r = 0.15
+            bg.color = "white", bg.r = 0.15,
+            max.overlaps = 15
           )
         }
       } else {
