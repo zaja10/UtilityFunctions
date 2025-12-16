@@ -30,7 +30,7 @@ This vignette demonstrates:
 
 ```{r setup}
 library(UtilityFunctions)
-library(tidyverse)
+# library(tidyverse) # Removed to demonstrate standalone capability
 # library(asreml) # Required for model fitting
 library(agridat) # For the example dataset
 ```

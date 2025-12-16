@@ -21,7 +21,12 @@ predict_cross_utility <- function(parents, markers, effects, map, i_sel = 2.06) 
     if (length(common_mk) < length(effects)) warning("Some markers with effects are missing in genotype/map. They will be ignored.")
 
     map <- map[common_mk]
-    map <- map[order(map)]
+
+    # CRITICAL: Ensure map is sorted by position.
+    # The C++ sliding window optimization relies on this.
+    if (is.unsorted(map)) {
+        map <- map[order(map)]
+    }
     ordered_mk <- names(map)
 
     M <- markers[, ordered_mk, drop = FALSE]
@@ -159,4 +164,3 @@ optimize_mating_list <- function(parents, marker_effects, map, markers, n_crosse
 
     return(best_set)
 }
-
