@@ -1,4 +1,4 @@
-﻿#' Force Model Convergence
+#' Force Model Convergence
 #'
 #' Iteratively updates an ASReml model until the variance components stabilize or
 #' the log-likelihood converges.
