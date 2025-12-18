@@ -1,4 +1,4 @@
-﻿#' Master Visualization Suite for Factor Analytic Models
+#' Master Visualization Suite for Factor Analytic Models
 #'
 #' @import ggplot2
 #' @importFrom stats reshape setNames aggregate
@@ -253,25 +253,44 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
       }
     } +
 
-    # 3. Labels (Smart Repel)
+    # 3. Labels (Sites)
     {
       if (requireNamespace("ggrepel", quietly = TRUE)) {
         if (has_anno) {
           ggrepel::geom_text_repel(
             data = df_lod, site_mapping_text,
             fontface = "bold", size = 3.5, bg.color = "white", bg.r = 0.15,
-            max.overlaps = 15
+            max.overlaps = 15, seed = 42
           )
         } else {
           ggrepel::geom_text_repel(
             data = df_lod, site_mapping_text,
             color = "#2c3e50", fontface = "bold", size = 3.5,
             bg.color = "white", bg.r = 0.15,
-            max.overlaps = 15
+            max.overlaps = 15, seed = 42
           )
         }
       } else {
         geom_text(data = df_lod, aes(X, Y, label = ID), color = "navy")
+      }
+    } +
+
+    # 4. Labels (Highlighted Genotypes)
+    {
+      if (!is.null(highlight)) {
+        df_lbl_gen <- df_scr[df_scr$ID %in% highlight, ]
+        if (nrow(df_lbl_gen) > 0) {
+          if (requireNamespace("ggrepel", quietly = TRUE)) {
+            ggrepel::geom_text_repel(
+              data = df_lbl_gen, aes(X, Y, label = ID),
+              color = "red", fontface = "bold.italic", size = 3,
+              bg.color = "white", bg.r = 0.1,
+              max.overlaps = 20, seed = 42
+            )
+          } else {
+            geom_text(data = df_lbl_gen, aes(X, Y, label = ID), color = "red", vjust = -1)
+          }
+        }
       }
     } +
 
@@ -396,4 +415,140 @@ plot_met_trend <- function(data, x = "Year", y = "Yield", main = "Yield Trend", 
     geom_smooth(aes(x = as.numeric(factor(.data[[x]])), y = .data[[y]]), method = "lm", se = FALSE, color = "red") +
     theme_genetics() +
     labs(title = main, x = x, y = y)
+}
+
+#' Plot Selection Profile (Parallel Coordinates) with Check Comparison
+#'
+#' Visualizes the standardized performance of top genotypes and a specific Check
+#' variety across all traits relative to the population.
+#'
+#' @param index_df Dataframe returned by \code{calculate_mt_index}.
+#' @param top_n Number of top genotypes to highlight.
+#' @param check_geno Character string. Name of the Check Genotype to highlight (optional).
+#' @export
+plot_index_profile <- function(index_df, top_n = 5, check_geno = NULL) {
+  # 1. Prepare Data
+  z_cols <- grep("_OP_Z$", names(index_df), value = TRUE)
+  if (length(z_cols) == 0) stop("No '_OP_Z' columns found. Did you run calculate_mt_index?")
+
+  # Filter non-culled for background context
+  if ("Status" %in% names(index_df)) {
+    valid_df <- index_df[index_df$Status != "Culled", ]
+  } else {
+    valid_df <- index_df
+  }
+
+  # Identify Groups
+  top_genos <- head(valid_df$Genotype, top_n)
+
+  # Manual pivot to long format (base R robustness)
+  df_long_list <- lapply(z_cols, function(col) {
+    data.frame(
+      Genotype = valid_df$Genotype,
+      Trait = sub("_OP_Z", "", col),
+      Z_Score = valid_df[[col]],
+      stringsAsFactors = FALSE
+    )
+  })
+  df_long <- do.call(rbind, df_long_list)
+
+  # Assign Groups
+  df_long$Group <- "Pop"
+  df_long$Group[df_long$Genotype %in% top_genos] <- "Top"
+
+  # Handle Check Genotype
+  if (!is.null(check_geno)) {
+    if (!check_geno %in% valid_df$Genotype) {
+      warning(paste("Check genotype", check_geno, "not found in data."))
+    } else {
+      df_long$Group[df_long$Genotype == check_geno] <- "Check"
+    }
+  }
+
+  # Order factors: Pop on bottom, Check middle, Top on top
+  df_long$Group <- factor(df_long$Group, levels = c("Pop", "Check", "Top"))
+
+  # 2. Plotting
+  p <- ggplot(df_long, aes(x = Trait, y = Z_Score, group = Genotype)) +
+    # A. Background Population (Faded Grey)
+    geom_line(
+      data = df_long[df_long$Group == "Pop", ],
+      color = "grey90", linesize = 0.5, alpha = 0.6
+    ) +
+
+    # B. Check Variety (Distinct Black Dashed)
+    geom_line(
+      data = df_long[df_long$Group == "Check", ],
+      aes(linetype = "Check"), color = "black", linesize = 1, alpha = 0.8
+    ) +
+
+    # C. Top Selections (Colored)
+    geom_line(
+      data = df_long[df_long$Group == "Top", ],
+      aes(color = Genotype), linesize = 1.2
+    ) +
+
+    # Reference Mean Line
+    geom_hline(yintercept = 0, linetype = "dotted", color = "grey50") +
+
+    # Aesthetics
+    scale_linetype_manual(name = "Benchmark", values = c("Check" = "longdash")) +
+    theme_genetics() +
+    labs(
+      title = "Selection Profile: Top Candidates vs Check",
+      subtitle = "Standardized Performance (0 = Population Mean)",
+      y = "Standard Deviations (SD)",
+      x = NULL
+    ) +
+    theme(
+      legend.position = "bottom",
+      panel.grid.major.x = element_line(color = "grey90")
+    )
+
+  return(p)
+}
+
+#' Plot Predicted Response to Selection
+#'
+#' Visualizes the percentage change in traits if the top selection is advanced.
+#'
+#' @param resp_df Dataframe returned by \code{predict_response}.
+#' @export
+plot_response <- function(resp_df) {
+  # Classify gain as Positive/Negative for color
+  resp_df$Direction <- ifelse(resp_df$Pct_Change >= 0, "Positive", "Negative")
+
+  ggplot(resp_df, aes(x = reorder(Trait, Pct_Change), y = Pct_Change, fill = Direction)) +
+    geom_col(alpha = 0.8) +
+    coord_flip() +
+    scale_fill_manual(values = c("Positive" = "#2ecc71", "Negative" = "#e74c3c")) +
+    geom_hline(yintercept = 0, color = "black") +
+    theme_genetics() +
+    labs(
+      title = "Predicted Genetic Gain",
+      subtitle = "Expected shift in population mean (Top Selection)",
+      y = "% Change relative to Population Mean",
+      x = NULL
+    ) +
+    theme(legend.position = "none")
+}
+
+#' Plot Selection Pipeline Results
+#'
+#' Generates visualizations for the Multi-Trait Selection Pipeline.
+#'
+#' @param x An object of class \code{mt_selection_results}.
+#' @param type Character. "profile" for the Selection Profile (Parallel Coordinates),
+#'             "gain" for the Response to Selection bar chart. Default is "profile".
+#' @param ... Additional arguments.
+#' @export
+plot.mt_selection_results <- function(x, type = "profile", ...) {
+  if (type == "profile") {
+    plot_index_profile(x$index, top_n = x$params$top_n, check_geno = x$params$check_geno)
+  } else if (type == "gain") {
+    if (is.null(x$prediction)) stop("No prediction data available.")
+    plot_response(x$prediction)
+  } else {
+    stop("Unknown plot type. Use 'profile' or 'gain'.")
+  }
 }
