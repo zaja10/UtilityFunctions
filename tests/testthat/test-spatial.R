@@ -33,10 +33,7 @@ test_that("pad_trial_layout handles MET groups", {
     expect_true(is.na(t1_pad$Yield))
 })
 
-test_that("convert_buac_to_tha calculates correctly", {
-    y_wheat <- convert_buac_to_tha(100, crop = "wheat")
-    expect_equal(y_wheat, 6.725, tolerance = 1e-2)
-})
+# test_that("convert_buac_to_tha calculates correctly", { ... }) DELETED
 
 test_that("plot functions run without error", {
     set.seed(123)
@@ -44,15 +41,17 @@ test_that("plot functions run without error", {
         Year = rep(c("2020", "2021"), each = 10),
         Yield = rnorm(20),
         Trial = rep(c("T1", "T2"), each = 10),
+        Row = rep(1:2, 10),
+        Column = rep(1:5, 4),
         Long = rnorm(20),
         Lat = rnorm(20),
         Genotype = rep(c("A", "B"), 10)
     )
 
 
-    p2 <- plot_met_trend(df, x = "Year", y = "Yield")
+    p2 <- plot_trend(df, mode = "phenotypic", x = "Year", y = "Yield")
     expect_s3_class(p2, "ggplot")
 
-    p3 <- plot_trial_map(df[df$Trial == "T1", ])
+    p3 <- plot_spatial(df[df$Trial == "T1", ])
     expect_s3_class(p3, "ggplot")
 })

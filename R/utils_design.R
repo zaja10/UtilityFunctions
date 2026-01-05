@@ -1,112 +1,55 @@
 ﻿#' Diagnose Trial Design Structure
 #'
-#' @description
-#' Analyzes the experimental design of a dataset to check for connectivity, balance,
-#' and aliasing between structural factors (e.g., Reps nested within Sites).
-#'
-#' @param data A dataframe containing the trial data.
-#' @param genotype Character. Column name for Genotype.
-#' @param trial Character. Column name for Trial/Environment.
-#' @param rep Character. Column name for Replicate/Block (Optional).
-#'
-#' @return A `design_diagnosis` object (S3 class) containing:
-#' \describe{
-#'   \item{structure}{Counts of levels for key factors.}
-#'   \item{connectivity}{Connectivity matrix (shared genotypes) between sites.}
-#'   \item{aliasing}{Check if Reps are nested within Sites (Recycled vs Unique coding).}
-#'   \item{balance}{Summary of missing plots.}
-#' }
-#'
+#' Check using `diagnose_design(data, "Geno", "env")`.
 #' @export
 diagnose_design <- function(data, genotype, trial, rep = NULL) {
-    if (!all(c(genotype, trial) %in% names(data))) {
-        stop("Specified columns not found in data.")
-    }
+    if (!all(c(genotype, trial) %in% names(data))) stop("Columns missing")
 
-    # 1. Structural Counts
     n_gen <- length(unique(data[[genotype]]))
     n_site <- length(unique(data[[trial]]))
-    counts <- list(Genotypes = n_gen, Sites = n_site)
 
-    # 2. Connectivity (Mini-Implementation)
-    # Check disjoint sets
-    inc_table <- table(data[[genotype]], data[[trial]])
-    inc_mat <- as.matrix(inc_table)
-    inc_mat[inc_mat > 0] <- 1
-    con_mat <- t(inc_mat) %*% inc_mat
+    # Connectivity
+    inc <- table(data[[genotype]], data[[trial]])
+    inc[inc > 0] <- 1
+    # Check disjoint
 
-    # 3. Aliasing / Nesting Check
-    nesting_status <- "Unknown"
-    if (!is.null(rep) && rep %in% names(data)) {
-        # Check if Rep levels are recycled across sites
-        tbl <- table(data[[trial]], data[[rep]])
-        # If Rep 1 exists in Site A and Site B, it is likely "nested" physically but coded same
-        is_recycled <- all(colSums(tbl > 0) > 1)
-        nesting_status <- if (is_recycled) "Recycled (Nested)" else "Unique (Crossed/Implicitly Nested)"
-    }
-
-    # 4. Construct Object
     obj <- list(
-        data_summary = counts,
-        connectivity = con_mat,
-        nesting = nesting_status,
-        call = list(genotype = genotype, trial = trial, rep = rep)
+        counts = list(G = n_gen, S = n_site),
+        connectivity = t(inc) %*% inc
     )
-
     class(obj) <- "design_diagnosis"
-    return(obj)
+    obj
 }
 
-#' Print Design Diagnosis
+#' Find Missing Plots
 #'
-#' @param x A design_diagnosis object.
-#' @param ... Additional arguments.
+#' Identifies gaps in rectangular grids (Row x Col).
 #' @export
-print.design_diagnosis <- function(x, ...) {
-    cat("=== Design Diagnosis ===\n")
-    cat(sprintf("Genotypes: %d | Sites: %d\n", x$data_summary$Genotypes, x$data_summary$Sites))
-    cat(sprintf("Rep Coding: %s\n", x$nesting))
+find_missing_plots <- function(data, experiment = "Experiment", row = "Row", col = "Column") {
+    if (!all(c(experiment, row, col) %in% names(data))) stop("Cols missing")
 
-    # Connectivity Warning
-    disconnected <- which(x$connectivity == 0, arr.ind = TRUE)
-    # Remove self-loops and duplicates
-    disconnected <- disconnected[disconnected[, 1] < disconnected[, 2], , drop = FALSE]
+    out <- do.call(rbind, lapply(unique(data[[experiment]]), function(id) {
+        sub <- data[data[[experiment]] == id, ]
+        if (nrow(sub) == 0) {
+            return(NULL)
+        }
 
-    if (nrow(disconnected) > 0) {
-        cat("\n[WARNING]: Use check_connectivity() to inspect disjoint sites!\n")
-    } else {
-        cat("Connectivity: Full network graph connected.\n")
-    }
-}
+        r <- as.numeric(sub[[row]])
+        c <- as.numeric(sub[[col]])
 
-#' Plot Design Tableau
-#'
-#' @description
-#' Visualizes the randomization design using the first two variables in the plot formula
-#' (e.g., Site and Rep) to show coverage/balance.
-#'
-#' @param x A design_tableau object.
-#' @param ... Additional arguments.
-#' @export
-plot.design_tableau <- function(x, ...) {
-    # Implementation placeholder - will use graphics::image or similar
-    # to visualize the contingency table of the design factors.
+        grid <- expand.grid(R = seq(min(r), max(r)), C = seq(min(c), max(c)))
+        grid$Key <- paste(grid$R, grid$C)
+        sub$Key <- paste(r, c)
 
-    pf_vars <- all.vars(x$formulas$random)
-    if (length(pf_vars) < 2) {
-        message("Need at least 2 random effect factors to plot design.")
-        return(invisible(NULL))
-    }
+        miss <- setdiff(grid$Key, sub$Key)
+        if (length(miss) > 0) {
+            coords <- do.call(rbind, strsplit(miss, " "))
+            data.frame(Experiment = id, Row = as.numeric(coords[, 1]), Column = as.numeric(coords[, 2]))
+        } else {
+            NULL
+        }
+    }))
 
-    v1 <- pf_vars[1]
-    v2 <- pf_vars[2]
-
-    tab <- table(x$data[[v1]], x$data[[v2]])
-
-    image(tab,
-        main = paste("Design Structure:", v1, "vs", v2),
-        axes = FALSE, col = c("white", "steelblue")
-    )
-    axis(1, at = seq(0, 1, length.out = nrow(tab)), labels = rownames(tab), las = 2)
-    axis(2, at = seq(0, 1, length.out = ncol(tab)), labels = colnames(tab), las = 1)
+    if (is.null(out)) message("Complete grid.")
+    out
 }

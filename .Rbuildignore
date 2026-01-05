@@ -1,2 +1,7 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^_.Rcheck$
+^src/.*\.o$
+^src/.*\.so$
+^src/.*\.dll$
+^src/symbols\.rds$

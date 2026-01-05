@@ -1,28 +1,34 @@
-#' Check ASReml Availability
+#' ASReml Utility Wrapper
 #'
-#' @description
-#' Checks if the `asreml` package is installed and licensed.
-#' Stops execution with a clear message if unavailable.
-#'
-#' @param action Character. "stop" (default) or "warning" or "logical".
-#' @return Logical TRUE if available, or error/warning if not.
+#' @name utils_asreml
+NULL
+
+#' Check Availability
 #' @export
-check_asreml_availability <- function(action = "stop") {
-    installed <- requireNamespace("asreml", quietly = TRUE)
-
-    if (installed) {
-        # Try a simple licensed operation (e.g., check license status if possible,
-        # or just rely on package load not failing)
-        # ASReml checks license on load/function call.
-        # We can try to access a function.
+check_asreml_availability <- function() {
+    if (!requireNamespace("asreml", quietly = TRUE)) {
+        stop("ASReml-R is required for this function.")
     }
+    TRUE
+}
 
-    if (!installed) {
-        msg <- "The 'asreml' package is required for this function but is not installed.\nPlease install it (and acquire a license) to use this feature."
-        if (action == "stop") stop(msg, call. = FALSE)
-        if (action == "warning") warning(msg, call. = FALSE)
-        return(FALSE)
+#' Force Convergence
+#'
+#' Repeatedly updates an ASReml model until convergence or max iterations.
+#' @param model asreml object.
+#' @param max_iter Numeric limit.
+#' @export
+force_convergence <- function(model, max_iter = 10) {
+    if (!inherits(model, "asreml")) stop("Not an asreml object.")
+
+    for (i in 1:max_iter) {
+        if (model$converge) {
+            message("Converged.")
+            return(model)
+        }
+        message(paste("Update", i))
+        model <- update(model)
     }
-
-    return(TRUE)
+    warning("Did not converge.")
+    model
 }

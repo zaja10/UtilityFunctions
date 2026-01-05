@@ -2,17 +2,10 @@
 % Please edit documentation in R/utils_asreml.R
 \name{check_asreml_availability}
 \alias{check_asreml_availability}
-\title{Check ASReml Availability}
+\title{Check Availability}
 \usage{
-check_asreml_availability(action = "stop")
-}
-\arguments{
-\item{action}{Character. "stop" (default) or "warning" or "logical".}
-}
-\value{
-Logical TRUE if available, or error/warning if not.
+check_asreml_availability()
 }
 \description{
-Checks if the `asreml` package is installed and licensed.
-Stops execution with a clear message if unavailable.
+Check Availability
 }

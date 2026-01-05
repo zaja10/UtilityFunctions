@@ -71,7 +71,8 @@ test_that("plot functions run without error", {
     # Test Plotting (Run for side effects)
     pdf(NULL) # Sink plot output
     # expect_silent(plot_connectivity(df, x = "Year", trace = "Genotype")) # Deprecated
-    expect_silent(plot_met_trend(df, x = "Year", y = "Yield"))
-    expect_silent(plot_trial_map(df[df$Trial == "T1", ]))
+    # expect_silent(plot_connectivity(df, x = "Year", trace = "Genotype")) # Deprecated
+    expect_silent(plot_trend(df, mode = "phenotypic", x = "Year", y = "Yield"))
+    expect_silent(plot_spatial(df[df$Trial == "T1", ]))
     dev.off()
 })

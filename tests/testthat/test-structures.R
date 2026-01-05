@@ -10,7 +10,7 @@ test_that("Universal parser handles RR and interactions", {
             0.1, 0.2
         ), ncol = 1, dimnames = list(c(
             "rr(Site, 1)!SiteA!rr_1", "rr(Site, 1)!SiteB!rr_1",
-            "diag(Site)!SiteA", "diag(Site)!SiteB"
+            "diag(Site)!SiteA!var", "diag(Site)!SiteB!var"
         ), "component")),
         coefficients = list(random = matrix(0, nrow = 0, ncol = 1)) # No scores for simplicity
     )
@@ -19,7 +19,7 @@ test_that("Universal parser handles RR and interactions", {
     # Test RR parsing
     res_rr <- fit_fa_model(mock_rr, classify = "rr(Site, 1):Genotype", psi_term = "diag(Site)")
 
-    expect_equal(res_rr$meta$type, "Reduced Rank (RR)")
+    expect_equal(res_rr$meta$type, "rr")
     expect_equal(nrow(res_rr$loadings$raw), 2)
     expect_equal(res_rr$var_comp$psi$Psi, c(0.1, 0.2))
 

@@ -36,5 +36,5 @@ test_that("prepare_asreml_grm handles non-symmetric input", {
     rownames(G) <- colnames(G) <- c("A", "B")
 
     # Should warn
-    expect_warning(prepare_asreml_grm(G, blend = 0), "Forcing symmetry")
+    expect_message(prepare_asreml_grm(G, blend = 0), "GRM is not symmetric")
 })

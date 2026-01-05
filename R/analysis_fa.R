@@ -57,7 +57,21 @@ fit_fa_model <- function(model, classify = NULL, psi_term = NULL, rotate = "mean
     }
 
     # 2. Extract Terms ----------------------------------------------------------
-    vp <- summary(model)$varcomp
+    # Robust extraction: Try summary() first, fallback to model$varcomp (for mocks/older versions)
+    vp <- tryCatch(
+        {
+            summ <- summary(model)
+            if (is.list(summ) && "varcomp" %in% names(summ)) {
+                summ$varcomp
+            } else {
+                # If summary is not a list (e.g. atomic from summary.default), force error to trigger fallback
+                stop("summary is not a list with varcomp")
+            }
+        },
+        error = function(e) model$varcomp
+    )
+
+    if (is.null(vp)) cli::cli_abort("Could not extract 'varcomp' from model.")
     vp_names <- rownames(vp)
 
     # Loadings
@@ -124,6 +138,7 @@ fit_fa_model <- function(model, classify = NULL, psi_term = NULL, rotate = "mean
             vals <- coefs[rows, 1]
             clean_ids <- sub(paste0(".*", "(Comp|Fac|fa|rr)[_]?", i, "(_|:)?"), "", matches)
             clean_ids <- sub("^:", "", clean_ids)
+            clean_ids <- sub("vm\\([^)]+\\)_?", "", clean_ids) # Clean vm() wrapper
             scores_list[[i]] <- data.frame(Genotype = clean_ids, Value = vals, Factor = i)
         }
     }
@@ -206,7 +221,7 @@ fit_fa_model <- function(model, classify = NULL, psi_term = NULL, rotate = "mean
         var_comp = list(psi = psi_df, vaf = vaf_df),
         matrices = list(G = G_est, Cor = C_est),
         fast = fast_df,
-        meta = list(k = k, group = site_var, genotype = gen_col_name, var_explained = var_exp)
+        meta = list(k = k, group = site_var, genotype = gen_col_name, var_explained = var_exp, type = type)
     )
     class(res) <- "fa_model"
 

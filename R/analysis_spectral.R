@@ -232,7 +232,6 @@ calculate_vegetation_indices <- function(spectra_df,
     cli::cli_alert_info("Calculating {length(todo)} indices: {paste(names(todo), collapse=', ')}")
 
     # 5. Apply
-    # Splice the expressions into mutate
     res <- dplyr::mutate(spectra_df, !!!todo)
 
     return(res)

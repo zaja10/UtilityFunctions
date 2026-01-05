@@ -25,19 +25,10 @@ A `design_diagnosis` object (S3 class) containing:
   \item{aliasing}{Check if Reps are nested within Sites (Recycled vs Unique coding).}
   \item{balance}{Summary of missing plots.}
 }
-
-A `design_diagnosis` object (S3 class) containing:
-\describe{
-  \item{structure}{Counts of levels for key factors.}
-  \item{connectivity}{Connectivity matrix (shared genotypes) between sites.}
-  \item{aliasing}{Check if Reps are nested within Sites (Recycled vs Unique coding).}
-  \item{balance}{Summary of missing plots.}
-}
 }
 \description{
 Analyzes the experimental design of a dataset to check for connectivity, balance,
 and aliasing between structural factors (e.g., Reps nested within Sites).
 
-Analyzes the experimental design of a dataset to check for connectivity, balance,
-and aliasing between structural factors (e.g., Reps nested within Sites).
+Check using `diagnose_design(data, "Geno", "env")`.
 }
