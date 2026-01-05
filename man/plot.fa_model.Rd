@@ -6,6 +6,19 @@
 \usage{
 \method{plot}{fa_model}(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...)
 }
+\arguments{
+\item{x}{Object of class `fa_model`.}
+
+\item{type}{String type of plot: "fast", "heatmap", "latent_reg", "biplot", "vaf", "d_opt", "diff".}
+
+\item{factor}{Numeric or Vector. Factor(s) to plot (for biplots/regressions).}
+
+\item{n_label}{Integer. Number of top genotypes to label (default 5).}
+
+\item{highlight}{Character vector. Genotypes to highlight.}
+
+\item{...}{Additional arguments passed to specific plot methods.}
+}
 \description{
 Master Visualization Suite for Factor Analytic Models
 }

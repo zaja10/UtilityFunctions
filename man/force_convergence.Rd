@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils_asreml.R
 \name{force_convergence}
 \alias{force_convergence}
-\title{Force Convergence}
+\title{Force Convergence (Deprecated)}
 \usage{
 force_convergence(model, max_iter = 10)
 }
@@ -12,5 +12,7 @@ force_convergence(model, max_iter = 10)
 \item{max_iter}{Numeric limit.}
 }
 \description{
-Repeatedly updates an ASReml model until convergence or max iterations.
+`r lifecycle::badge("deprecated")`
+
+Use \code{\link{mkConv}} instead. This function now wraps \code{mkConv} for backward compatibility.
 }

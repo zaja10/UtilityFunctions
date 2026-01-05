@@ -21,6 +21,15 @@ diagnose_design <- function(data, genotype, trial, rep = NULL) {
     obj
 }
 
+#' Convert Factor to Numeric safely
+#'
+#' @param df Vector or column to convert.
+#' @return Numeric vector.
+#' @export
+makeNm <- function(df) {
+    as.numeric(as.character(df))
+}
+
 #' Find Missing Plots
 #'
 #' Identifies gaps in rectangular grids (Row x Col).

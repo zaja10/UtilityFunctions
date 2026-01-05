@@ -89,3 +89,47 @@ process_weather_indices <- function(weather_data, trial_metadata, t_base = 0, he
     mat <- as.matrix(ec_df[, -1])
     return(mat)
 }
+
+#' Calculate Days Since Start
+#'
+#' Converts a vector of Day of Year (DOY) values into "Days Since Start" based on a planting date string.
+#' Handles year transitions (e.g., planting in Oct, sampling in Jan).
+#'
+#' @param doy_vector Numeric vector of DOY values.
+#' @param planting_date_string Character string format "YYYY-Month-DD" (e.g., "2023-October-04").
+#' @return Numeric vector of days elapsed since planting.
+#' @export
+calculate_days_since_start <- function(doy_vector, planting_date_string) {
+    # --- Helper function to convert DOY to Date ---
+    doy_to_date <- function(doy, year) {
+        date_time_obj <- strptime(paste(year, doy), format = "%Y %j")
+        return(as.Date(date_time_obj))
+    }
+
+    # 1. Parse the planting date string
+    #    Note: "%Y-%B-%d" matches "2023-October-04"
+    start_date <- as.Date(planting_date_string, format = "%Y-%B-%d")
+    if (is.na(start_date)) {
+        stop("Planting date string format is incorrect. Please use 'YYYY-Month-DD', e.g., '2023-October-04'")
+    }
+
+    # 2. Get the planting year and planting day-of-year
+    start_year <- as.numeric(format(start_date, "%Y"))
+    start_doy <- as.numeric(format(start_date, "%j"))
+
+    # 3. Determine the correct year for each doy in the vector
+    #    If a doy is LESS THAN the start doy, it's from the next year.
+    year_vector <- ifelse(doy_vector < start_doy,
+        start_year + 1,
+        start_year
+    )
+
+    # 4. Convert all (doy, year) pairs into real dates
+    date_vector <- doy_to_date(doy = doy_vector, year = year_vector)
+
+    # 5. Calculate the difference in days from the start date
+    days_diff <- difftime(date_vector, start_date, units = "days")
+
+    # Return as a simple number
+    return(as.numeric(days_diff))
+}

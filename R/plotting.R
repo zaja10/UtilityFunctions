@@ -7,7 +7,20 @@
 #' @name plotting_utils
 NULL
 
+#' Default Checks
+#'
+#' Standard check genotypes for plots.
+#' @export
+DEFAULT_CHECKS <- c("17-8930", "US16-IL-063-063", "25R76", "AgriMAXX 490", "07-19334", "AgriMAXX503")
+
 #' Master Visualization Suite for Factor Analytic Models
+#'
+#' @param x Object of class `fa_model`.
+#' @param type String type of plot: "fast", "heatmap", "latent_reg", "biplot", "vaf", "d_opt", "diff".
+#' @param factor Numeric or Vector. Factor(s) to plot (for biplots/regressions).
+#' @param n_label Integer. Number of top genotypes to label (default 5).
+#' @param highlight Character vector. Genotypes to highlight.
+#' @param ... Additional arguments passed to specific plot methods.
 #' @export
 plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...) {
   if (type == "fast") {
@@ -42,8 +55,9 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
 #' @param x String. X-axis column (Year).
 #' @param y String. Y-axis column (Yield or BLUP).
 #' @param checks Character vector. Names of checks to highlight (only for genetic mode).
+#'   Defaults to \code{DEFAULT_CHECKS}.
 #' @export
-plot_trend <- function(data, mode = "phenotypic", x = "Year", y = "Yield", checks = NULL) {
+plot_trend <- function(data, mode = "phenotypic", x = "Year", y = "Yield", checks = DEFAULT_CHECKS) {
   if (mode == "phenotypic") {
     # Original plot_met_trend logic
     p <- ggplot(data, aes(x = factor(.data[[x]]), y = .data[[y]])) +
@@ -62,8 +76,10 @@ plot_trend <- function(data, mode = "phenotypic", x = "Year", y = "Yield", check
 
     if (!is.null(checks)) {
       check_data <- data[data$Genotype %in% checks, ]
-      p <- p + geom_point(data = check_data, color = "red", shape = 17, size = 3) +
-        geom_text(data = check_data, aes(label = Genotype), vjust = -1, color = "red")
+      if (nrow(check_data) > 0) {
+        p <- p + geom_point(data = check_data, color = "red", shape = 17, size = 3) +
+          geom_text(data = check_data, aes(label = Genotype), vjust = -1, color = "red")
+      }
     }
     return(p)
   } else {

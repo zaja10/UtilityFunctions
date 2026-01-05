@@ -12,6 +12,7 @@
 #'
 #' @importFrom dplyr mutate
 #' @importFrom rlang parse_expr !!!
+#' @importFrom cli cli_alert_info cli_progress_bar cli_progress_update
 #' @export
 #'
 #' @examples
@@ -232,7 +233,139 @@ calculate_vegetation_indices <- function(spectra_df,
     cli::cli_alert_info("Calculating {length(todo)} indices: {paste(names(todo), collapse=', ')}")
 
     # 5. Apply
+    # Splice the expressions into mutate
     res <- dplyr::mutate(spectra_df, !!!todo)
 
     return(res)
+}
+
+#' Process Longitudinal Spectral Data
+#'
+#' Iterates through time-series spectral data in wide format (e.g., Trait.Time),
+#' calculates vegetation indices for each timepoint, and combines the results.
+#'
+#' @param data Dataframe containing the wide-format data.
+#' @param meta_cols Character vector or numeric indices of metadata columns to include in the output.
+#' @param spectral_cols Character vector or numeric indices of columns containing spectral data.
+#' @param split_char Character. Delimiter used in column names (default ".").
+#' @param trait_pos Integer. Position of the Trait in the split name (default 1).
+#' @param time_pos Integer. Position of the Time/Day in the split name (default 2).
+#' @param band_mapping Named vector mapping raw trait names to standard bands.
+#'   Default: c("Blue"="B", "Green"="G", "Red"="R", "RedEdge"="RE1", "NIR"="N").
+#' @param ... Additional arguments passed to \code{calculate_vegetation_indices}.
+#'
+#' @return A long-format dataframe with calculated indices and a 'Day' column.
+#' @export
+#' @examples
+#' \dontrun{
+#' # Assuming b624.df is your wide data:
+#' # HTPtraitsVec <- 43:132
+#' # meta_cols <- 1:42
+#' # results <- process_longitudinal_indices(b624.df, meta_cols, HTPtraitsVec)
+#' }
+process_longitudinal_indices <- function(data, meta_cols, spectral_cols,
+                                         split_char = ".", trait_pos = 1, time_pos = 2,
+                                         band_mapping = c(
+                                             "Blue" = "B", "Green" = "G", "Red" = "R",
+                                             "RedEdge" = "RE1", "NIR" = "N"
+                                         ),
+                                         ...) {
+    # 1. Parse Column Names
+    if (is.numeric(spectral_cols)) {
+        spec_col_names <- colnames(data)[spectral_cols]
+        spec_col_indices <- spectral_cols
+    } else {
+        spec_col_names <- spectral_cols
+        spec_col_indices <- match(spec_col_names, colnames(data))
+    }
+
+    parts <- strsplit(spec_col_names, split = split_char, fixed = TRUE)
+
+    # Validation
+    if (any(sapply(parts, length) < max(trait_pos, time_pos))) {
+        stop("Some spectral column names do not match the expected format (split_char not found or not enough parts).")
+    }
+
+    traits <- sapply(parts, `[`, trait_pos)
+    times <- sapply(parts, `[`, time_pos)
+
+    # Try numeric conversion for time, but keep as is if NA results (e.g. "T1", "T2")
+    times_num <- suppressWarnings(as.numeric(times))
+    if (!all(is.na(times_num))) {
+        times <- times_num
+    }
+
+    u_times <- unique(times)
+    u_times <- u_times[!is.na(u_times)]
+
+    cli::cli_alert_info("Found {length(u_times)} unique timepoints to process.")
+    cli::cli_progress_bar("Processing timepoints", total = length(u_times))
+
+    results_list <- list()
+
+    # 2. Iterate
+    for (i in seq_along(u_times)) {
+        current_time <- u_times[i]
+        cli::cli_progress_update()
+
+        # Identify columns for this timepoint
+        # We need to find the specific column index for each REQUIRED band in band_mapping
+        # Logic: Look inside spec_col_indices where Time == current and Trait == mapping_key
+
+        current_indices <- list()
+        missing_bands <- FALSE
+
+        for (raw_trait in names(band_mapping)) {
+            std_band <- band_mapping[[raw_trait]]
+
+            # Match logic
+            idx_in_subset <- which(times == current_time & traits == raw_trait)
+
+            if (length(idx_in_subset) == 1) {
+                # Map standard band name (e.g. "B") to the actual column index in 'data'
+                global_idx <- spec_col_indices[idx_in_subset]
+                current_indices[[std_band]] <- global_idx
+            } else {
+                # If a required band is missing for this day
+                missing_bands <- TRUE
+                break
+            }
+        }
+
+        if (!missing_bands) {
+            # Construct temp dataframe
+            # Start with metadata
+            temp_df <- data[, meta_cols, drop = FALSE]
+
+            # Add spectral columns with Standard Names
+            for (band in names(current_indices)) {
+                col_idx <- current_indices[[band]]
+                temp_df[[band]] <- data[[col_idx]]
+            }
+
+            # Calculate Indices
+            # We wrap this in tryCatch to handle potential calculation errors gracefully
+            day_res <- tryCatch(
+                {
+                    calculate_vegetation_indices(temp_df, ...)
+                },
+                error = function(e) {
+                    warning(paste("Calculation failed for timepoint:", current_time, "-", e$message))
+                    return(NULL)
+                }
+            )
+
+            if (!is.null(day_res)) {
+                day_res$Day <- current_time
+                results_list[[i]] <- day_res
+            }
+        } else {
+            # silently skip or warn? The user script warns.
+            # We can use cli_alert_warning but maybe too noisy if many days missing
+        }
+    }
+
+    # 3. Combine
+    final_df <- do.call(rbind, results_list)
+    return(final_df)
 }

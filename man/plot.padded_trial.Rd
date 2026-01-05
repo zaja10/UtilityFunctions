@@ -6,6 +6,13 @@
 \usage{
 \method{plot}{padded_trial}(x, fill_col = NULL, ...)
 }
+\arguments{
+\item{x}{Object of class `padded_trial`.}
+
+\item{fill_col}{Character. Column to map to fill color.}
+
+\item{...}{Unused.}
+}
 \description{
-Plot Trial Layout
+Usage: plot(padded_object, fill_col = "Yield")
 }

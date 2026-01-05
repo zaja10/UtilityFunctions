@@ -4,8 +4,28 @@
 \alias{validate_met_data}
 \title{Validate MET Data Structure}
 \usage{
-validate_met_data(data, trait, genotype, env, check_numeric = TRUE)
+validate_met_data(
+  data,
+  trait = "Yield",
+  genotype = "Genotype",
+  env = "Trial",
+  check_numeric = TRUE
+)
+}
+\arguments{
+\item{data}{Dataframe.}
+
+\item{trait}{Character. Column name for the trait.}
+
+\item{genotype}{Character. Column name for Genotype.}
+
+\item{env}{Character. Column name for Environment/Trial.}
+
+\item{check_numeric}{Logical. Whether to strictly check for numeric trait values (default TRUE).}
+}
+\value{
+Logical TRUE if valid, throws error otherwise.
 }
 \description{
-Performs robust quality checks on a Multi-Environment Trial dataset.
+Checks if data meets the requirements for Multi-Environment Trial analysis.
 }

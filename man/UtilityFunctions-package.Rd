@@ -4,9 +4,10 @@
 \name{UtilityFunctions-package}
 \alias{UtilityFunctions}
 \alias{UtilityFunctions-package}
-\title{UtilityFunctions: Factor Analytic Model Extraction and Selection Tools}
+\title{UtilityFunctions: Factor Analytic and Design Tools}
 \description{
-A specialized suite for processing factor analytic models (ASReml-R). Implements "FAST" selection tools (Smith & Cullis, 2018), design diagnostics, and cross prediction utilities.
+A suite of tools for processing and visualizing Factor Analytic models
+in plant breeding (ASReml-R).
 }
 \seealso{
 Useful links:

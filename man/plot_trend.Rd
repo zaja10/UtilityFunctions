@@ -4,7 +4,13 @@
 \alias{plot_trend}
 \title{Plot Trends (Phenotypic or Genetic)}
 \usage{
-plot_trend(data, mode = "phenotypic", x = "Year", y = "Yield", checks = NULL)
+plot_trend(
+  data,
+  mode = "phenotypic",
+  x = "Year",
+  y = "Yield",
+  checks = DEFAULT_CHECKS
+)
 }
 \arguments{
 \item{data}{Dataframe.}
@@ -15,7 +21,8 @@ plot_trend(data, mode = "phenotypic", x = "Year", y = "Yield", checks = NULL)
 
 \item{y}{String. Y-axis column (Yield or BLUP).}
 
-\item{checks}{Character vector. Names of checks to highlight (only for genetic mode).}
+\item{checks}{Character vector. Names of checks to highlight (only for genetic mode).
+Defaults to \code{DEFAULT_CHECKS}.}
 }
 \description{
 Visualizes data over time (e.g., Year).

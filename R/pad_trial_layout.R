@@ -15,6 +15,9 @@
 #' @return An object of class `padded_trial` (inherits from data.frame).
 #' @export
 pad_trial_layout <- function(data, row_col = "Row", col_col = "Column", group_cols = NULL) {
+    # Silence R CMD check notes for .data in tidyverse
+    utils::globalVariables(c(".data"))
+
     # --- 1. Input Validation ---
     req_cols <- c(row_col, col_col, group_cols)
     if (!all(req_cols %in% names(data))) {
@@ -89,6 +92,12 @@ pad_trial_layout <- function(data, row_col = "Row", col_col = "Column", group_co
 }
 
 #' Plot Trial Layout
+#'
+#' Usage: plot(padded_object, fill_col = "Yield")
+#'
+#' @param x Object of class `padded_trial`.
+#' @param fill_col Character. Column to map to fill color.
+#' @param ... Unused.
 #' @export
 plot.padded_trial <- function(x, fill_col = NULL, ...) {
     if (!requireNamespace("ggplot2", quietly = TRUE)) stop("ggplot2 is required for plotting.")

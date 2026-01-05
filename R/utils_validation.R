@@ -1,10 +1,15 @@
 #' Validate MET Data Structure
 #'
-#' Performs robust quality checks on a Multi-Environment Trial dataset.
+#' Checks if data meets the requirements for Multi-Environment Trial analysis.
 #'
-#' @import cli
+#' @param data Dataframe.
+#' @param trait Character. Column name for the trait.
+#' @param genotype Character. Column name for Genotype.
+#' @param env Character. Column name for Environment/Trial.
+#' @param check_numeric Logical. Whether to strictly check for numeric trait values (default TRUE).
+#' @return Logical TRUE if valid, throws error otherwise.
 #' @export
-validate_met_data <- function(data, trait, genotype, env, check_numeric = TRUE) {
+validate_met_data <- function(data, trait = "Yield", genotype = "Genotype", env = "Trial", check_numeric = TRUE) {
     # 1. Column Existence
     req_cols <- c(trait, genotype, env)
     missing <- setdiff(req_cols, names(data))
