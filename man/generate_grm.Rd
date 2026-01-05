@@ -26,6 +26,6 @@ Creates a Genomic Relationship Matrix (GRM) using the VanRaden (2008) Method 1.
 where \eqn{Z} is the centered genotype matrix ($M - 2P$).
 }
 \references{
-VanRaden, P. M. (2008). Efficient methods to compute genomic predictions. 
+VanRaden, P. M. (2008). Efficient methods to compute genomic predictions.
 \emph{Journal of dairy science}, 91(11), 4414-4423.
 }

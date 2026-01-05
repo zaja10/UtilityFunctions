@@ -4,21 +4,39 @@
 \alias{calculate_mt_index}
 \title{Calculate Multi-Trait Stability Index}
 \usage{
-calculate_mt_index(fa_objects_list, weights, penalties)
+calculate_mt_index(
+  fa_objects_list,
+  weights,
+  penalties,
+  thresholds = NULL,
+  cull_strict = FALSE
+)
 
-calculate_mt_index(fa_objects_list, weights, penalties)
+calculate_mt_index(
+  fa_objects_list,
+  weights,
+  penalties,
+  thresholds = NULL,
+  cull_strict = FALSE
+)
 }
 \arguments{
-\item{fa_objects_list}{A named list of \code{fa_asreml} objects (one per trait).}
+\item{fa_objects_list}{A named list of objects of class \code{fa_model} (output from fit_fa_model).}
 
 \item{weights}{Named numeric vector of economic weights (w) for each trait.}
 
 \item{penalties}{Named numeric vector of stability penalties (lambda) for each trait.}
+
+\item{thresholds}{Named numeric vector. Minimum acceptable raw value for a trait.
+E.g., c(Yield = 2.0, Protein = 10.5). Genotypes below this are culled.}
+
+\item{cull_strict}{Logical. If TRUE, remove culled genotypes from the output.
+If FALSE (default), keep them but set their Index to -Inf and Status to "Culled".}
 }
 \value{
 A dataframe with standardized scores per trait and the final Index.
 
-A dataframe with standardized scores per trait and the final Index.
+A dataframe with standardized scores per trait, raw values, and the final Index.
 }
 \description{
 Computes a composite selection index across multiple traits, incorporating
@@ -26,4 +44,5 @@ both performance (OP) and stability (RMSD) for each trait.
 
 Computes a composite selection index across multiple traits, incorporating
 both performance (OP) and stability (RMSD) for each trait.
+Supports Independent Culling Levels (ICL).
 }

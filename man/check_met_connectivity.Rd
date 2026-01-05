@@ -4,7 +4,12 @@
 \alias{check_met_connectivity}
 \title{Check MET Connectivity (Island Detection)}
 \usage{
-check_met_connectivity(data, trial_col = "Trial", gen_col = "Genotype")
+check_met_connectivity(
+  data,
+  trial_col = "Trial",
+  gen_col = "Genotype",
+  stop_if_disconnected = FALSE
+)
 }
 \arguments{
 \item{data}{Dataframe containing the MET data.}
@@ -12,6 +17,8 @@ check_met_connectivity(data, trial_col = "Trial", gen_col = "Genotype")
 \item{trial_col}{Character. Column name for Trial/Environment.}
 
 \item{gen_col}{Character. Column name for Genotype.}
+
+\item{stop_if_disconnected}{Logical. If TRUE, stops execution if islands are found.}
 }
 \value{
 A list containing:

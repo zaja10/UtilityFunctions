@@ -13,6 +13,7 @@ Imports:
     ggplot2,
     cli,
     dplyr,
+    rlang,
     MASS,
     Matrix,
     Rcpp

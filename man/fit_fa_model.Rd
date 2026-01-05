@@ -6,20 +6,26 @@
 \usage{
 fit_fa_model(
   model,
-  classify,
+  classify = NULL,
   psi_term = NULL,
-  rotate = TRUE,
+  rotate = "mean",
   annotation = NULL
 )
 }
 \arguments{
 \item{model}{A fitted object of class \code{asreml}.}
 
-\item{classify}{Character. The term to extract. E.g., \code{"fa(Site, 2):Genotype"}.}
+\item{classify}{Character (Optional). The term to extract. E.g., \code{"fa(Site, 2)"}.
+If NULL, the function attempts to find the first FA/RR term in \code{model$call$random}.}
 
 \item{psi_term}{Character (Optional). Specific variance term for RR models.}
 
-\item{rotate}{Logical. Perform SVD rotation to PC solution? Default TRUE.}
+\item{rotate}{Character or Logical. Rotation strategy. Options:
+\itemize{
+  \item \code{"varimax"} or \code{TRUE}: Standard PCA/SVD rotation (Max Var).
+  \item \code{"mean"}: Rotate Factor 1 to align with the average loading magnitude (Overall Performance).
+  \item \code{FALSE}: Raw solution.
+}}
 
 \item{annotation}{Optional dataframe or named list to annotate sites immediately.
 Passed to \code{\link{annotate_model}}.}
@@ -29,5 +35,5 @@ An object of class \code{fa_model} with 'loadings', 'scores', 'fast', and 'varia
 }
 \description{
 A universal parser for ASReml-R Factor Analytic (FA) and Reduced Rank (RR) models.
-Calculates FAST indices (OP, RMSD), Global Factor Variance, and Site VAF.
+Implements the "Smith & Cullis" Factor Analytic Selection Tools (FAST) framework.
 }
