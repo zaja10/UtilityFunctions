@@ -87,3 +87,4 @@ The `plot()` function supports various types to inspect the `fa_model`:
 ## References
 
 Smith, A. B., & Cullis, B. R. (2018). Plant breeding selection tools built on factor analytic mixed models for multi-environment trial data. _Euphytica_, 214(8).
+Gevartosky, R., Munaro, L. B., & Rutkoski, J. E. (2026). Phenotype imputation using high-throughput phenotyping produces a new secondary trait for further selection modeling. The Plant Phenome Journal, 9, e70081.
