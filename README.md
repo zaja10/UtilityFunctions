@@ -32,8 +32,9 @@ library(UtilityFunctions)
 
 # Define models
 models <- list(
-  RCD = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ ar1(Col):ar1(Row)),
-  Units = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ dsum(~ ar1(Col):ar1(Row) | units))
+  AxAe = list(fixed = Yield ~ 1, random = ~ Genotype + units, residual = ~ ar1(Col):ar1(Row)),
+  AxA = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ ar1(Col):ar1(Row)),
+  RCD = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ Col:Row)
 )
 
 # Compare AIC/LogLik
