@@ -1,13 +1,16 @@
 # UtilityFunctions
 
-**Factor Analytic Model Extraction and Selection Tools**
+**Comprehensive Mixed Modeling & Factor Analytic Tools for Plant Breeding**
 
-`UtilityFunctions` provides a specialized suite for post-processing Factor Analytic (FA) models in plant breeding. It decouples the analysis integration, allowing you to fit models with `ASReml-R` and use this package for:
+`UtilityFunctions` provides a specialized suite of tools for robust post-processing of Multi-Environment Trials (MET) using ASReml-R, handling Factor Analytic (FA) models, spatial models, bivariate traits, and genomic/phenomic diagnostics.
 
-1. **Structure**: `diagnose_design` validates experimental design.
-2. **Extraction**: `fa.asreml` extracts and rotates parameters from fitted models.
-3. **Selection**: "FAST" indices for variety advancement (OP & RMSD).
-4. **Prediction**: Rank crosses using gametic variance ($UC = \mu + i\sigma_g$).
+## Key Features
+
+1. **Spatial & Bivariate Modeling**: Streamlined wrappers (`compare_spatial_models`, `fit_bivariate_models`) to automate multi-trait and spatial model fitting.
+2. **FA Model Diagnostics**: A universal parser (`fa.asreml`) to extract, rotate, and summarize Factor Analytic/Reduced Rank parameters using the "Smith & Cullis" FAST framework (OP & RMSD).
+3. **Outlier Detection**: Automated Average Outlier Measure (AOM) calculation using `extract_asreml_outliers()`.
+4. **Spectral Analysis**: Evaluate Vegetation Indices using LOCO (Leave-One-Column-Out) cross-validation via `evaluate_vi_loco()`.
+5. **Genomic Utilities**: Subsetting and padding Genomic Relationship Matrices (GRM) safely for ASReml via `prepare_trial_grm()`.
 
 ## Installation
 
@@ -16,68 +19,69 @@
 devtools::install_github("zaja10/UtilityFunctions")
 ```
 
-_Requires `asreml` for model fitting._
+*Requires `asreml` for model fitting workflows.*
 
-## Basic Workflow
+## Basic Workflow Examples
 
-### 1. Structural Validation
+### 1. Spatial Model Selection
 
-Ensure your data structure (Rep nesting, Aliasing) is correct.
+Evaluate multiple spatial structures for a single trial and extract variance components.
 
 ```r
 library(UtilityFunctions)
-library(agridat)
 
-diag_report <- diagnose_design(dasilva.maize, genotype="gen", trial="env", rep="rep")
-print(diag_report)
+# Define models
+models <- list(
+  RCD = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ ar1(Col):ar1(Row)),
+  Units = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ dsum(~ ar1(Col):ar1(Row) | units))
+)
+
+# Compare AIC/LogLik
+comp_df <- compare_spatial_models(models, df)
+
+# Extract h2, PEV, and Accuracy
+var_df <- extract_variance_components(best_model, genotype_term = "vm(Genotype, G.inv)", error_term = "Col:Row!R")
 ```
 
-### 2. Fit Model & Extract (FAST)
+### 2. Factor Analytic Models (FAST)
 
-Fit an FA2 model using ASReml, then extract rotated solution.
+Fit an FA model and extract rotated solutions for selection.
 
 ```r
-# 1. Fit Model (Standard ASReml)
+# Fit Model
 model <- asreml(fixed = yield ~ env,
                 random = ~ fa(env, 2):gen,
                 data = dasilva.maize)
 
-# 2. Extract & Rotate
-# 2. Extract & Rotate
-results <- fa.asreml(model, classify = "fa(env, 2):gen", rotation = "varimax")
+# Extract & Rotate
+results <- fa.asreml(model, classify = "fa(env, 2):gen", rotate = "mean")
 
-# 3. Access BLUEs & BLUPs (New)
-blues <- results$blues                   # Centered Fixed Effects
-blups <- results$scores$blups_in_met     # Reconstructed Site Effects
+# Clean Summary (VAF, Loadings, OP Index)
+summary(results)
 
-# 3. Visualization: OP vs RMSD
-plot(results, type = "fast")
+# Extract matrices directly
+loadings <- extract_fa_loadings(results)$Loadings
 ```
 
-### 3. Cross Prediction
+### 3. High-Throughput Phenotyping (HTP)
 
-Prioritize crosses based on the Usefulness Criterion ($UC = \mu + i\sigma_g$).
+Evaluate Vegetation Indices (VIs) predicting Yield using LOCO-CV.
 
 ```r
-preds <- predict_cross_utility(parents, markers, effects, map)
-head(preds)
-```
-
+vi_results <- evaluate_vi_loco(df, target_trait = "Yield", vi_names = c("NDVI", "NDRE"))
+print(vi_results$Col_Acc) # Column-wise accuracy
 ```
 
 ## Visualization Options
-The `plot()` function supports various types to inspect the model:
+
+The `plot()` function supports various types to inspect the `fa_model`:
 
 | Type | Description |
 |------|-------------|
 | `"fast"` | **Selection**: Overall Performance (OP) vs Stability (RMSD) |
 | `"heatmap"` | **Connectivity**: Genetic Correlation Matrix between sites |
 | `"latent_reg"` | **GxE**: Latent regression showing stability drivers |
-| `"biplot"` | **Structure**: standard GGE-style biplot of scores/loadings |
 | `"vaf"` | **Quality**: Variance Accounted For (%) per site |
-| `"d_opt"` | **Network**: D-Optimality (Information content of sites) |
-| `"diff"` | **Specific Adaptation**: Interaction Class differences |
-| `"h2"` | **Reliability**: Cullis/Standard heritability comparison per site |
 
 ## References
 

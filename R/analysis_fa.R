@@ -20,7 +20,7 @@
 #' @importFrom stats coef cov2cor sd
 #' @import cli
 #' @export
-fit_fa_model <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", annotation = NULL) {
+fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", annotation = NULL) {
     cli::cli_h1("Extracting FA/RR Model Parameters")
 
     if (is.logical(rotate)) {
@@ -321,3 +321,86 @@ rank_genotypes <- function(fast_df, weight_stability = 1) {
     fast_df$Rank <- 1:nrow(fast_df)
     return(fast_df)
 }
+
+#' Extract Factor Analytic Loadings and VAF
+#'
+#' @param fa_object An FA model object.
+#' @return A list containing the rotated loadings matrix and the Variance Accounted For (VAF) summary.
+#' @export
+extract_fa_loadings <- function(fa_object) {
+  if (!inherits(fa_object, "fa_model")) stop("Object must be of class 'fa_model'")
+  
+  loadings <- fa_object$loadings$rotated
+  vaf <- fa_object$var_comp$vaf
+  
+  return(list(
+    Loadings = loadings,
+    VAF = vaf
+  ))
+}
+
+#' Extract Factor Analytic BLUPs and Scores
+#'
+#' @param fa_object An FA model object.
+#' @return A list containing the raw/rotated scores.
+#' @export
+extract_fa_blups <- function(fa_object) {
+  if (!inherits(fa_object, "fa_model")) stop("Object must be of class 'fa_model'")
+  
+  scores <- fa_object$scores$rotated
+  fast_indices <- fa_object$fast
+  
+  return(list(
+    Scores = scores,
+    FAST = fast_indices
+  ))
+}
+
+#' Summary Method for Factor Analytic Models
+#'
+#' Provides a concise summary of the FA model, including variance explained,
+#' top loading environments, and top performing genotypes.
+#'
+#' @param object An object of class `fa_model`.
+#' @param ... Additional arguments (ignored).
+#' @return Prints a summary and returns the object invisibly.
+#' @export
+summary.fa_model <- function(object, ...) {
+  if (!inherits(object, "fa_model")) stop("Object must be of class 'fa_model'")
+  
+  meta <- object$meta
+  k <- meta$k
+  vaf <- object$var_comp$vaf
+  
+  cli::cli_h1("Factor Analytic Model Summary")
+  cli::cli_text("Type: {.val {toupper(meta$type)}} | Factors: {.val {k}}")
+  cli::cli_text("")
+  
+  cli::cli_h2("Variance Accounted For (VAF)")
+  if (!is.null(meta$var_explained)) {
+    for (i in 1:length(meta$var_explained)) {
+      cli::cli_text("Factor {i}: {.val {round(meta$var_explained[i], 2)}%}")
+    }
+  }
+  
+  cli::cli_h2("Top Environments by Factor Loading")
+  loadings <- object$loadings$rotated
+  if (!is.null(loadings)) {
+    for (i in 1:ncol(loadings)) {
+      top_env <- rownames(loadings)[which.max(abs(loadings[, i]))]
+      val <- max(abs(loadings[, i]))
+      cli::cli_text("Factor {i}: {.val {top_env}} (Loading: {round(val, 3)})")
+    }
+  }
+  
+  cli::cli_h2("Top Genotypes (Overall Performance)")
+  if (!is.null(object$fast)) {
+    top_genos <- head(object$fast, 5)
+    cli::cli_text(paste(top_genos$Genotype, "(OP: ", round(top_genos$OP, 3), ")", collapse = " | "))
+  } else {
+    cli::cli_alert_warning("No scores available to calculate FAST indices.")
+  }
+  
+  invisible(object)
+}
+

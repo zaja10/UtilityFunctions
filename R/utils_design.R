@@ -1,6 +1,10 @@
-﻿#' Diagnose Trial Design Structure
+#' Diagnose Trial Design Structure
 #'
 #' Check using `diagnose_design(data, "Geno", "env")`.
+#' @param data Dataframe containing the trial data.
+#' @param genotype Character. Column name for genotype.
+#' @param trial Character. Column name for trial.
+#' @param rep Character. Optional column name for rep.
 #' @export
 diagnose_design <- function(data, genotype, trial, rep = NULL) {
     if (!all(c(genotype, trial) %in% names(data))) stop("Columns missing")
@@ -33,6 +37,10 @@ makeNm <- function(df) {
 #' Find Missing Plots
 #'
 #' Identifies gaps in rectangular grids (Row x Col).
+#' @param data Dataframe containing the trial layout.
+#' @param experiment Character. Column name for the experiment/trial identifier.
+#' @param row Character. Column name for Row.
+#' @param col Character. Column name for Column.
 #' @export
 find_missing_plots <- function(data, experiment = "Experiment", row = "Row", col = "Column") {
     if (!all(c(experiment, row, col) %in% names(data))) stop("Cols missing")

@@ -11,6 +11,15 @@ find_missing_plots(
   col = "Column"
 )
 }
+\arguments{
+\item{data}{Dataframe containing the trial layout.}
+
+\item{experiment}{Character. Column name for the experiment/trial identifier.}
+
+\item{row}{Character. Column name for Row.}
+
+\item{col}{Character. Column name for Column.}
+}
 \description{
 Identifies gaps in rectangular grids (Row x Col).
 }

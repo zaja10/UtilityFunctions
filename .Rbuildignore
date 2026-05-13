@@ -5,3 +5,4 @@
 ^src/.*\.so$
 ^src/.*\.dll$
 ^src/symbols\.rds$
+^incoming_code\.R$

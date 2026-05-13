@@ -369,3 +369,99 @@ process_longitudinal_indices <- function(data, meta_cols, spectral_cols,
     final_df <- do.call(rbind, results_list)
     return(final_df)
 }
+
+#' Evaluate Vegetation Indices using LOCO-CV
+#'
+#' Evaluates the predictive power of a set of Vegetation Indices (VIs) on a target trait
+#' using Multiple Linear Regression (MLR) and Leave-One-Column-Out Cross-Validation (LOCO-CV).
+#'
+#' @param data A dataframe containing the target trait, VI columns, and a spatial 'colNumber' column.
+#' @param target_trait Character. The name of the target trait to predict.
+#' @param vi_names Character vector. The names of the VI predictor columns.
+#' @param col_identifier Character. The name of the column identifying spatial columns for LOCO (default "colNumber").
+#' @param method_name Character. Label for the method (default "MLR_UAS").
+#' @return A list containing Global Importance, LOCO Predictions, and Accuracy metrics.
+#' @importFrom stats as.formula lm predict cor sd
+#' @export
+evaluate_vi_loco <- function(data, target_trait, vi_names, col_identifier = "colNumber", method_name = "MLR_UAS") {
+  
+  if (!target_trait %in% names(data)) stop(paste("Target trait", target_trait, "not found in data."))
+  if (!all(vi_names %in% names(data))) stop("Not all vi_names found in data.")
+  if (!col_identifier %in% names(data)) stop(paste("Column identifier", col_identifier, "not found in data."))
+  
+  # 1. Clean Data
+  valid_data <- data[!is.na(data[[target_trait]]), ]
+  
+  # 2. Construct Formula
+  mlr_formula <- as.formula(paste(target_trait, "~", paste(vi_names, collapse = " + ")))
+  
+  # 3. Global Importance
+  global_fit <- lm(mlr_formula, data = valid_data)
+  coef_sum <- summary(global_fit)$coefficients
+  
+  # Filter out intercept
+  terms <- rownames(coef_sum)
+  idx <- terms != "(Intercept)"
+  
+  importance_df <- data.frame(
+    Method = method_name,
+    Predictor = terms[idx],
+    Importance_Weight = abs(coef_sum[idx, "t value"]),
+    P_Value = coef_sum[idx, "Pr(>|t|)"],
+    stringsAsFactors = FALSE
+  )
+  importance_df <- importance_df[order(-importance_df$Importance_Weight), ]
+  
+  # 4. Leave-One-Column-Out (LOCO) CV
+  data$Imputed_Target <- NA_real_
+  unique_cols <- unique(data[[col_identifier]][!is.na(data[[col_identifier]])])
+  
+  for (k in unique_cols) {
+    train_data <- data[data[[col_identifier]] != k & !is.na(data[[target_trait]]), ]
+    test_data  <- data[data[[col_identifier]] == k, ]
+    
+    if (nrow(train_data) < length(vi_names)) next 
+    
+    tryCatch({
+      fit <- lm(mlr_formula, data = train_data)
+      data$Imputed_Target[data[[col_identifier]] == k] <- predict(fit, newdata = test_data)
+    }, error = function(e) { 
+      message(paste("Column", k, "skipped due to rank deficiency or prediction error."))
+    })
+  }
+  
+  # 5. Calculate Accuracies
+  valid_res <- data[!is.na(data[[target_trait]]) & !is.na(data$Imputed_Target), ]
+  
+  acc_r <- if (nrow(valid_res) > 2) {
+    cor(valid_res[[target_trait]], valid_res$Imputed_Target)
+  } else {
+    NA_real_
+  }
+  
+  # Column-wise accuracies
+  col_acc_list <- lapply(unique(valid_res[[col_identifier]]), function(k) {
+    sub_df <- valid_res[valid_res[[col_identifier]] == k, ]
+    n_plots <- nrow(sub_df)
+    acc <- NA_real_
+    if (n_plots > 2 && sd(sub_df$Imputed_Target, na.rm = TRUE) > 0) {
+      acc <- cor(sub_df[[target_trait]], sub_df$Imputed_Target)
+    }
+    data.frame(
+      Col_ID = k,
+      N_Plots = n_plots,
+      Column_Acc_r = acc,
+      Method = method_name,
+      stringsAsFactors = FALSE
+    )
+  })
+  
+  col_acc_df <- do.call(rbind, col_acc_list)
+  
+  return(list(
+    Acc = acc_r, 
+    Importance = importance_df, 
+    Col_Acc = col_acc_df, 
+    Predictions = data
+  ))
+}

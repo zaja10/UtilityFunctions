@@ -16,9 +16,8 @@ Imports:
     rlang,
     MASS,
     Matrix,
-    Rcpp
-LinkingTo: 
-    Rcpp
+    methods,
+    purrr
 Suggests: 
     knitr,
     rmarkdown,

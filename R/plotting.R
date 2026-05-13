@@ -33,8 +33,8 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     .plot_biplot_static(x, highlight, if (is.null(factor)) c(1, 2) else factor)
   } else if (type == "vaf") {
     .plot_vaf(x)
-  } else if (type == "d_opt") {
-    .plot_dopt(calculate_d_optimality(x))
+  # } else if (type == "d_opt") {
+  #   .plot_dopt(calculate_d_optimality(x))
   } else if (type == "diff") {
     .plot_diff_generalized(x, ...)
   } else {

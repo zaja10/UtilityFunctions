@@ -77,3 +77,90 @@ align_pheno_geno <- function(pheno, geno, id_col = "Genotype") {
 
     return(list(pheno = pheno_sub, geno = geno_sub))
 }
+
+#' Match Germplasm Using Synonyms
+#'
+#' Robustly matches a germplasm name to a list of valid IDs. If the primary name
+#' fails, it attempts to split and match against a comma-separated list of synonyms.
+#'
+#' @param name Character or Factor. Primary germplasm name.
+#' @param syn_string Character or Factor. Comma-separated string of synonyms.
+#' @param valid_ids Character vector. List of valid IDs (e.g., from a GRM).
+#' @return The matched character ID, or NA_character_ if no match is found.
+#' @export
+match_germplasm <- function(name, syn_string, valid_ids) {
+  name <- as.character(name)
+  syn_string <- as.character(syn_string)
+  
+  # Check 1: Primary match
+  if (name %in% valid_ids) {
+    return(name)
+  }
+  
+  # Check 2: Synonym match
+  if (!is.na(syn_string) && syn_string != "") {
+    syn_list <- trimws(unlist(strsplit(syn_string, ",")))
+    matched_syns <- syn_list[syn_list %in% valid_ids]
+    
+    if (length(matched_syns) > 0) {
+      return(matched_syns[1])
+    }
+  }
+  
+  return(NA_character_)
+}
+
+#' Prepare Trial GRM
+#'
+#' Subsets a master Genomic Relationship Matrix (GRM) to the lines present in a trial.
+#' Automatically pads the matrix with a dummy identity matrix for ungenotyped lines
+#' to prevent ASReml singularity/inverse errors.
+#'
+#' @param master_grm A square numeric matrix representing the master GRM.
+#' @param trial_data A dataframe containing the trial data.
+#' @param genotype_col Character. Column name in `trial_data` containing the genotypes.
+#' @return A square matrix representing the trial-specific GRM, scaled and padded.
+#' @importFrom Matrix bdiag
+#' @export
+prepare_trial_grm <- function(master_grm, trial_data, genotype_col = "Genotype") {
+  
+  if (!genotype_col %in% names(trial_data)) {
+    stop(paste("Genotype column", genotype_col, "not found in trial data."))
+  }
+  
+  trial_lines <- as.character(unique(trial_data[[genotype_col]]))
+  genotyped_lines <- intersect(trial_lines, rownames(master_grm))
+  ungenotyped_lines <- setdiff(trial_lines, genotyped_lines)
+  
+  if (length(genotyped_lines) == 0) {
+    stop("No genotyped lines found in the GRM for this trial.")
+  }
+  
+  # Subset and scale
+  grm_sub <- master_grm[genotyped_lines, genotyped_lines, drop = FALSE]
+  scale_factor <- mean(diag(grm_sub))
+  grm_sub <- grm_sub / scale_factor
+  
+  # Pad ungenotyped lines with an identity matrix
+  if (length(ungenotyped_lines) > 0) {
+    pad_mat <- diag(1, nrow = length(ungenotyped_lines))
+    rownames(pad_mat) <- colnames(pad_mat) <- ungenotyped_lines
+    
+    # Combine using bdiag from Matrix package
+    grm_final <- as.matrix(Matrix::bdiag(grm_sub, pad_mat))
+    rownames(grm_final) <- colnames(grm_final) <- c(genotyped_lines, ungenotyped_lines)
+  } else {
+    grm_final <- grm_sub
+  }
+  
+  # Add slight ridge for numerical stability during inversion
+  diag(grm_final) <- diag(grm_final) + 1e-4
+  
+  # Ensure the matrix order exactly matches the factor levels in the data
+  ordered_levels <- levels(factor(trial_data[[genotype_col]]))
+  # Only subset to levels that we just constructed (in case factor has unused levels)
+  valid_levels <- intersect(ordered_levels, rownames(grm_final))
+  
+  return(grm_final[valid_levels, valid_levels])
+}
+

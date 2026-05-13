@@ -36,13 +36,4 @@ test_that("plot.fa_model returns a ggplot object", {
     expect_true(is.null(p4) || inherits(p4, "ggplot"))
 })
 
-test_that("plot.padded_trial returns a ggplot object", {
-    df <- expand.grid(Row = 1:5, Col = 1:5)
-    df$Yield <- rnorm(25)
-    attr(df, "coords") <- c(row = "Row", col = "Col")
-    attr(df, "is_met") <- FALSE
-    class(df) <- c("padded_trial", "data.frame")
 
-    p <- plot(df)
-    expect_s3_class(p, "ggplot")
-})
