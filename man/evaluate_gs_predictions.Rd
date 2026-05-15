@@ -47,5 +47,5 @@ Extracts latent scores and prediction error variances (PEVs) from a fitted
 ASReml factor analytic (FA) model. Following the FAST framework (Smith & Cullis, 2018), 
 this function applies a Principal Component (SVD) rotation to the raw FA parameters.
 Overall Performance (OP) is defined by the rotated 1st Factor, while Stability (RMSD) 
-is calculated from the higher-order rotated factors ($k \ge 2$) representing crossover GxE.
+is calculated from the higher-order rotated factors (k >= 2) representing crossover GxE.
 }

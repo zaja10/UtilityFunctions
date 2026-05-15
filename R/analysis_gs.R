@@ -4,7 +4,7 @@
 #' ASReml factor analytic (FA) model. Following the FAST framework (Smith & Cullis, 2018), 
 #' this function applies a Principal Component (SVD) rotation to the raw FA parameters.
 #' Overall Performance (OP) is defined by the rotated 1st Factor, while Stability (RMSD) 
-#' is calculated from the higher-order rotated factors ($k \ge 2$) representing crossover GxE.
+#' is calculated from the higher-order rotated factors (k >= 2) representing crossover GxE.
 #'
 #' @param model An \code{asreml} object.
 #' @param target_ids Character vector. IDs of the target (unphenotyped) lines.
@@ -117,8 +117,14 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
     
     if (is.null(clean_ids_master)) clean_ids_master <- clean_ids
     
-    raw_scores_list[[i]] <- as.numeric(sub_c[, "solution"])
-    raw_pev_list[[i]]    <- as.numeric(sub_c[, "std error"])^2 
+    sol_col <- grep("solution|value", colnames(sub_c), ignore.case = TRUE, value = TRUE)[1]
+    se_col <- grep("std", colnames(sub_c), ignore.case = TRUE, value = TRUE)[1]
+    if (is.na(sol_col) || is.na(se_col)) {
+      cli::cli_abort("Could not identify solution or std error columns in model coefficients.")
+    }
+    
+    raw_scores_list[[i]] <- as.numeric(sub_c[, sol_col])
+    raw_pev_list[[i]]    <- as.numeric(sub_c[, se_col])^2 
   }
   
   if (length(raw_scores_list) == 0) {
