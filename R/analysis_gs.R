@@ -84,7 +84,12 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
   summ_coef <- summary(model, coef = TRUE)$coef.random
   rand_names <- rownames(summ_coef)
   
-  target_idx <- grep(base_term, rand_names, fixed = TRUE)
+  term_parts <- unlist(strsplit(base_term, ":"))
+  target_idx <- seq_along(rand_names)
+  for (part in term_parts) {
+    target_idx <- intersect(target_idx, grep(part, rand_names, fixed = TRUE))
+  }
+  
   if (length(target_idx) == 0) {
     cli::cli_abort("Could not find any random coefficients matching the base term {.val {base_term}}.")
   }
