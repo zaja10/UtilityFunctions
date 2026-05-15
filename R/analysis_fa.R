@@ -57,14 +57,12 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
     }
 
     # 2. Extract Terms ----------------------------------------------------------
-    # Robust extraction: Try summary() first, fallback to model$varcomp (for mocks/older versions)
     vp <- tryCatch(
         {
             summ <- summary(model)
             if (is.list(summ) && "varcomp" %in% names(summ)) {
                 summ$varcomp
             } else {
-                # If summary is not a list (e.g. atomic from summary.default), force error to trigger fallback
                 stop("summary is not a list with varcomp")
             }
         },
@@ -73,6 +71,19 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
 
     if (is.null(vp)) cli::cli_abort("Could not extract 'varcomp' from model.")
     vp_names <- rownames(vp)
+
+    # NEW: Filter vp_names and vp using the classify term to prevent mixing multiple FA terms
+    if (!is.null(classify)) {
+        safe_classify <- gsub("\\s+", "\\\\s*", classify)
+        safe_classify <- gsub("\\(", "\\\\(", safe_classify)
+        safe_classify <- gsub("\\)", "\\\\)", safe_classify)
+        
+        term_idx <- grep(safe_classify, vp_names, ignore.case = TRUE)
+        if (length(term_idx) > 0) {
+            vp_names <- vp_names[term_idx]
+            vp <- vp[term_idx, , drop = FALSE]
+        }
+    }
 
     # Loadings
     lambda_list <- lapply(1:k, function(i) {
@@ -112,13 +123,19 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
     for (site in target_sites) {
         pat <- paste0("!", site, "!var$")
         match_idx <- grep(pat, vp_names, value = FALSE)
+        
         if (length(match_idx) == 1) {
             psi_vals[site] <- vp[match_idx, "component"]
+            found_psi <- TRUE
+        } else if (length(match_idx) > 1) {
+            # Fallback if classify filter didn't fully narrow down to 1
+            psi_vals[site] <- vp[match_idx[1], "component"]
             found_psi <- TRUE
         } else {
             psi_vals[site] <- 0
         }
     }
+    
     if (!found_psi && type == "fa") {
         cli::cli_warn("No specific variances (!var) found for FA model sites. Assuming 0 (Reduced Rank behavior).")
     }
@@ -127,6 +144,29 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
     # Scores
     coefs <- coef(model)$random
     coef_names <- rownames(coefs)
+
+    # NEW: Filter coef_names using classify to prevent mixing multiple FA terms
+    if (!is.null(classify)) {
+        parts <- strsplit(classify, ":")[[1]]
+        for (p in parts) {
+            if (grepl("fa\\(|rr\\(", p, ignore.case = TRUE)) next
+            
+            # Extract base variable name from functions like vm(), ide(), etc.
+            base_var <- gsub(".*\\(([^,]+).*\\)", "\\1", p)
+            base_var <- trimws(base_var)
+            
+            coef_idx <- grep(base_var, coef_names, ignore.case = TRUE)
+            if (length(coef_idx) > 0) {
+                coef_names <- coef_names[coef_idx]
+                if (is.matrix(coefs) || is.data.frame(coefs)) {
+                    coefs <- coefs[coef_idx, , drop = FALSE]
+                } else {
+                    coefs <- coefs[coef_idx]
+                }
+            }
+        }
+    }
+
     scores_list <- vector("list", k)
     gen_col_name <- "Genotype"
 
@@ -135,7 +175,7 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
         rows <- grep(pat, coef_names, ignore.case = TRUE)
         if (length(rows) > 0) {
             matches <- coef_names[rows]
-            vals <- coefs[rows, 1]
+            vals <- if (is.matrix(coefs) || is.data.frame(coefs)) coefs[rows, 1] else coefs[rows]
             clean_ids <- sub(paste0(".*", "(Comp|Fac|fa|rr)[_]?", i, "(_|:)?"), "", matches)
             clean_ids <- sub("^:", "", clean_ids)
             clean_ids <- sub("vm\\([^)]+\\)_?", "", clean_ids) # Clean vm() wrapper
@@ -158,19 +198,12 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
     var_exp <- rep(NA, k)
 
     if (rotate != "none" && nrow(lambda_mat) > 1 && ncol(lambda_mat) > 0) {
-        # PCA (SVD)
         svd_res <- svd(lambda_mat)
         V <- svd_res$v
         lambda_pca <- lambda_mat %*% V
         f_pca <- if (has_scores) f_mat %*% V else NULL
 
         if (rotate == "mean" && k >= 1) {
-            # Rotate to Mean strategy:
-            # Align Factor 1 to be the "General Performance" dimension.
-            # Simple heuristic: Ensure sum of F1 loadings is positive.
-            # (For rigorous 'Rotate to Mean', we would rotate to align with unit vector,
-            #  but SVD F1 is usually this if positive manifold exists).
-
             if (sum(lambda_pca[, 1]) < 0) {
                 lambda_pca[, 1] <- -lambda_pca[, 1]
                 V[, 1] <- -V[, 1]
@@ -183,8 +216,7 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
             f_rot <- f_pca
         }
 
-        # Recalculate Variance Explained
-        tot_var <- sum(lambda_rot^2) # Trace(L'L)
+        tot_var <- sum(lambda_rot^2) 
         col_vars <- colSums(lambda_rot^2)
         var_exp <- (col_vars / tot_var) * 100
     }
@@ -255,7 +287,6 @@ calculate_fast_indices <- function(fa_object, k = NULL) {
     if (is.null(k)) k <- ncol(L)
 
     # OP (Overall Performance)
-    # OP = f_g1 * mean(lambda_1)
     mean_load_1 <- mean(L[, 1])
     op <- F_sc[, 1] * mean_load_1
 
@@ -263,7 +294,6 @@ calculate_fast_indices <- function(fa_object, k = NULL) {
     rmsd <- rep(0, nrow(F_sc))
 
     if (k > 1 && ncol(L) > 1) {
-        # Interaction Matrix
         L_int <- L[, 2:k, drop = FALSE]
         F_int <- F_sc[, 2:k, drop = FALSE]
         I_mat <- F_int %*% t(L_int)
@@ -284,8 +314,6 @@ calculate_fast_indices <- function(fa_object, k = NULL) {
 #' @return Dataframe with iClass columns.
 #' @export
 calculate_i_classes <- function(fa_object, alpha = 0.05) {
-    # TO BE IMPLEMENTED: Robust iClass determination
-    # For now, simplistic sign-based classification on Factor 2
     F_sc <- fa_object$scores$rotated
     k <- ncol(F_sc)
 
@@ -293,8 +321,6 @@ calculate_i_classes <- function(fa_object, alpha = 0.05) {
         return(NULL)
     }
 
-    # Simple classification on Factor 2 scores
-    # + = Positive Interaction, - = Negative Interaction
     scores <- F_sc[, 2]
     class_labels <- ifelse(scores > 0, "Positive", "Negative")
 
@@ -403,4 +429,3 @@ summary.fa_model <- function(object, ...) {
   
   invisible(object)
 }
-
