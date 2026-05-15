@@ -32,8 +32,9 @@ library(UtilityFunctions)
 
 # Define models
 models <- list(
-  RCD = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ ar1(Col):ar1(Row)),
-  Units = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ dsum(~ ar1(Col):ar1(Row) | units))
+  AxAe = list(fixed = Yield ~ 1, random = ~ Genotype + units, residual = ~ ar1(Col):ar1(Row)),
+  AxA = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ ar1(Col):ar1(Row)),
+  RCD = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ Col:Row)
 )
 
 # Compare AIC/LogLik
@@ -86,3 +87,4 @@ The `plot()` function supports various types to inspect the `fa_model`:
 ## References
 
 Smith, A. B., & Cullis, B. R. (2018). Plant breeding selection tools built on factor analytic mixed models for multi-environment trial data. _Euphytica_, 214(8).
+Gevartosky, R., Munaro, L. B., & Rutkoski, J. E. (2026). Phenotype imputation using high-throughput phenotyping produces a new secondary trait for further selection modeling. The Plant Phenome Journal, 9, e70081.
