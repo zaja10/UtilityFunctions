@@ -57,7 +57,10 @@ model <- asreml(fixed = yield ~ env,
 # Extract & Rotate
 results <- fa.asreml(model, classify = "fa(env, 2):gen", rotate = "mean")
 
-# Clean Summary (VAF, Loadings, OP Index)
+# Print basic summary
+print(results)
+
+# Detailed Summary (VAF, Loadings, OP Index)
 summary(results)
 
 # Extract matrices directly
@@ -71,6 +74,24 @@ Evaluate Vegetation Indices (VIs) predicting Yield using LOCO-CV.
 ```r
 vi_results <- evaluate_vi_loco(df, target_trait = "Yield", vi_names = c("NDVI", "NDRE"))
 print(vi_results$Col_Acc) # Column-wise accuracy
+```
+
+### 4. Genomic Selection Validation
+
+Evaluate predictions and dynamically view the results using S3 methods.
+
+```r
+# Evaluate
+gs_res <- evaluate_gs_predictions(model, target_ids, training_ids, target_term = "fa(env, 1):gen")
+
+# Print short summary
+print(gs_res)
+
+# Print detailed metric summaries
+summary(gs_res)
+
+# Visualize combined Breeder's Space plot
+plot(gs_res)
 ```
 
 ## Visualization Options

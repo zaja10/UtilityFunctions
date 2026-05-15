@@ -30,17 +30,15 @@ used for diagnosing missing targets. Expected to have dimnames corresponding to 
 
 \item{output_prefix}{Character. Prefix for the output CSV and PDF files. Default \code{"GS_Predictions"}.}
 
-\item{top_pct}{Numeric. The quantile threshold for highlighting top candidates (e.g., 0.95 for top 5%).}
+\item{top_pct}{Numeric. The quantile threshold for highlighting top candidates (e.g., 0.95 for top 5 percent).}
 
 \item{save_output}{Logical. Whether to save the CSV and PDF outputs. Default \code{TRUE}.}
 }
 \value{
-A list containing:
-\itemize{
-  \item \code{blups}: A dataframe of scaled GEBVs, PEVs, Reliability, and Stability for all lines.
-  \item \code{missing_targets}: A character vector of target IDs that were not found in the model.
-  \item \code{plots}: A combined \code{patchwork} plot object.
-}
+A list containing the following elements:
+* \code{blups}: A dataframe of scaled GEBVs, PEVs, Reliability, and Stability for all lines.
+* \code{missing_targets}: A character vector of target IDs that were not found in the model.
+* \code{plots}: A combined \code{patchwork} plot object.
 }
 \description{
 Extracts latent scores and prediction error variances (PEVs) from a fitted

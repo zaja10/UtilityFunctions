@@ -14,15 +14,13 @@
 #' @param g_inv Optional. The inverse Genomic Relationship Matrix (GRM) used in the model, 
 #'   used for diagnosing missing targets. Expected to have dimnames corresponding to IDs.
 #' @param output_prefix Character. Prefix for the output CSV and PDF files. Default \code{"GS_Predictions"}.
-#' @param top_pct Numeric. The quantile threshold for highlighting top candidates (e.g., 0.95 for top 5%).
+#' @param top_pct Numeric. The quantile threshold for highlighting top candidates (e.g., 0.95 for top 5 percent).
 #' @param save_output Logical. Whether to save the CSV and PDF outputs. Default \code{TRUE}.
 #'
-#' @return A list containing:
-#' \itemize{
-#'   \item \code{blups}: A dataframe of scaled GEBVs, PEVs, Reliability, and Stability for all lines.
-#'   \item \code{missing_targets}: A character vector of target IDs that were not found in the model.
-#'   \item \code{plots}: A combined \code{patchwork} plot object.
-#' }
+#' @return A list containing the following elements:
+#' * \code{blups}: A dataframe of scaled GEBVs, PEVs, Reliability, and Stability for all lines.
+#' * \code{missing_targets}: A character vector of target IDs that were not found in the model.
+#' * \code{plots}: A combined \code{patchwork} plot object.
 #' 
 #' @import ggplot2
 #' @import patchwork
@@ -341,9 +339,94 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
     cli::cli_alert_success("Saved enhanced manuscript figure to {.file {pdf_file}}")
   }
   
-  return(list(
+  res <- list(
     blups = blups_assigned,
     missing_targets = missing_targets,
     plots = combined_figure
-  ))
+  )
+  class(res) <- c("gs_predictions", "list")
+  return(res)
 }
+
+#' Print Method for Genomic Selection Predictions
+#'
+#' @param x An object of class `gs_predictions`.
+#' @param ... Additional arguments (ignored).
+#' @return Prints a summary and returns the object invisibly.
+#' @export
+print.gs_predictions <- function(x, ...) {
+  if (!inherits(x, "gs_predictions")) stop("Object must be of class 'gs_predictions'")
+  
+  n_train <- sum(x$blups$status == "Training", na.rm = TRUE)
+  n_target <- sum(x$blups$status == "Target", na.rm = TRUE)
+  
+  cli::cli_h1("Genomic Selection Predictions")
+  cli::cli_text("Cohorts: {.val {n_train}} Training | {.val {n_target}} Target")
+  
+  if (length(x$missing_targets) > 0) {
+    cli::cli_alert_warning("{.val {length(x$missing_targets)}} target lines were missing from the model.")
+  }
+  
+  cli::cli_h2("Top 5 Candidates")
+  blups_target <- x$blups[x$blups$status == "Target", ]
+  blups_target <- blups_target[order(blups_target$Selection_Index, decreasing = TRUE), ]
+  
+  cols_to_print <- c("id", "GEBV_OP")
+  if ("Stability_RMSD" %in% names(blups_target) && any(blups_target$Stability_RMSD > 0)) {
+    cols_to_print <- c(cols_to_print, "Stability_RMSD", "Selection_Index")
+  } else {
+    cols_to_print <- c(cols_to_print, "PEV_OP")
+  }
+  cols_to_print <- c(cols_to_print, "Reliability")
+  
+  print(head(blups_target[, cols_to_print], 5))
+  
+  invisible(x)
+}
+
+#' Summary Method for Genomic Selection Predictions
+#'
+#' @param object An object of class `gs_predictions`.
+#' @param ... Additional arguments (ignored).
+#' @return Prints a detailed summary and returns the object invisibly.
+#' @export
+summary.gs_predictions <- function(object, ...) {
+  if (!inherits(object, "gs_predictions")) stop("Object must be of class 'gs_predictions'")
+  
+  cli::cli_h1("Genomic Selection Validation Summary")
+  
+  blups <- object$blups
+  mean_rel_tr <- mean(blups$Reliability[blups$status == "Training"], na.rm = TRUE)
+  mean_rel_ta <- mean(blups$Reliability[blups$status == "Target"], na.rm = TRUE)
+  
+  cli::cli_text("Mean Prediction Reliability:")
+  cli::cli_text("  Training: {.val {round(mean_rel_tr, 3)}}")
+  cli::cli_text("  Target  : {.val {round(mean_rel_ta, 3)}}")
+  
+  if ("Stability_RMSD" %in% names(blups) && any(blups$Stability_RMSD > 0)) {
+    mean_rmsd_tr <- mean(blups$Stability_RMSD[blups$status == "Training"], na.rm = TRUE)
+    mean_rmsd_ta <- mean(blups$Stability_RMSD[blups$status == "Target"], na.rm = TRUE)
+    
+    cli::cli_text("")
+    cli::cli_text("Mean Stability (RMSD - Lower is more stable):")
+    cli::cli_text("  Training: {.val {round(mean_rmsd_tr, 3)}}")
+    cli::cli_text("  Target  : {.val {round(mean_rmsd_ta, 3)}}")
+  }
+  
+  cli::cli_text("")
+  cli::cli_text("Use {.code plot(object)} to visualize the Breeder's Selection Space.")
+  
+  invisible(object)
+}
+
+#' Plot Method for Genomic Selection Predictions
+#'
+#' @param x An object of class `gs_predictions`.
+#' @param ... Additional arguments (ignored).
+#' @return Returns the `patchwork` combined figure.
+#' @export
+plot.gs_predictions <- function(x, ...) {
+  if (!inherits(x, "gs_predictions")) stop("Object must be of class 'gs_predictions'")
+  return(x$plots)
+}
+

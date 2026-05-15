@@ -429,3 +429,30 @@ summary.fa_model <- function(object, ...) {
   
   invisible(object)
 }
+
+#' Print Method for Factor Analytic Models
+#'
+#' @param x An object of class `fa_model`.
+#' @param ... Additional arguments (ignored).
+#' @return Prints a concise summary and returns the object invisibly.
+#' @export
+print.fa_model <- function(x, ...) {
+  if (!inherits(x, "fa_model")) stop("Object must be of class 'fa_model'")
+  
+  meta <- x$meta
+  k <- meta$k
+  vaf <- x$var_comp$vaf
+  
+  cli::cli_h1("Factor Analytic Model")
+  cli::cli_text("Type: {.val {toupper(meta$type)}} | Factors: {.val {k}}")
+  if (!is.null(vaf$Total_VAF)) {
+    mean_vaf <- mean(vaf$Total_VAF, na.rm = TRUE)
+    cli::cli_text("Mean Total VAF across environments: {.val {round(mean_vaf, 1)}%}")
+  }
+  
+  cli::cli_text("")
+  cli::cli_text("Available components: {.val {paste(names(x), collapse = ', ')}}")
+  cli::cli_text("Use {.code summary(x)} for detailed metrics or {.code plot(x)} for visualizations.")
+  
+  invisible(x)
+}
