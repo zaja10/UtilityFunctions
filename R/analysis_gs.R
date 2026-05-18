@@ -13,6 +13,8 @@
 #'   (e.g., \code{"fa(studyName, 2):vm(gkeep, G.inv)"}). 
 #' @param g_inv Optional. The inverse Genomic Relationship Matrix (GRM) used in the model, 
 #'   used for diagnosing missing targets. Expected to have dimnames corresponding to IDs.
+#' @param grm Optional. The Genomic Relationship Matrix (GRM). If provided, it is used to calculate
+#'   Genetic Relatedness (row means) for plotting.
 #' @param output_prefix Character. Prefix for the output CSV and PDF files. Default \code{"GS_Predictions"}.
 #' @param top_pct Numeric. The quantile threshold for highlighting top candidates (e.g., 0.95 for top 5 percent).
 #' @param save_output Logical. Whether to save the CSV and PDF outputs. Default \code{TRUE}.
@@ -31,7 +33,7 @@
 #' @importFrom utils head write.csv
 #' @export
 evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term, 
-                                    g_inv = NULL, output_prefix = "GS_Predictions", 
+                                    g_inv = NULL, grm = NULL, output_prefix = "GS_Predictions", 
                                     top_pct = 0.95, save_output = TRUE) {
   
   cli::cli_h1("Evaluating Genomic Selection Predictions (FAST Framework)")
@@ -266,6 +268,13 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
   mean_train <- mean(blups_assigned$GEBV_OP[blups_assigned$status == "Training"], na.rm = TRUE)
   mean_target <- mean(blups_assigned$GEBV_OP[blups_assigned$status == "Target"], na.rm = TRUE)
   
+  if (!is.null(grm)) {
+    cli::cli_alert_info("Calculating Genetic Relatedness from GRM for plotting...")
+    relatedness <- rowMeans(grm, na.rm = TRUE)
+    rel_df <- data.frame(id = rownames(grm), Relatedness = relatedness, stringsAsFactors = FALSE)
+    blups_assigned <- merge(blups_assigned, rel_df, by = "id", all.x = TRUE)
+  }
+  
   # Plot A: GEBV Distribution
   plot_A <- ggplot(blups_assigned, aes(x = .data$GEBV_OP, fill = .data$status)) +
     geom_density(alpha = 0.6, color = "black", linewidth = 0.3) +
@@ -326,11 +335,33 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
       theme(legend.position = "none")
   }
   
-  combined_figure <- plot_A / (plot_B | plot_C) +
-    patchwork::plot_annotation(
-      title = 'Genomic Prediction Validation and Selection Differentials',
-      theme = theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
-    )
+  # Plot D: Relatedness vs Reliability (if GRM is provided)
+  has_plot_D <- FALSE
+  if ("Relatedness" %in% names(blups_assigned)) {
+    has_plot_D <- TRUE
+    plot_D <- ggplot(blups_assigned, aes(x = .data$Relatedness, y = .data$Reliability, color = .data$status)) +
+      geom_point(alpha = 0.7, size = 2) +
+      geom_smooth(method = "lm", se = FALSE) +
+      scale_color_manual(values = c("Training" = "#56B4E9", "Target" = "#E69F00")) +
+      labs(title = "D. Relatedness vs Reliability",
+           x = "Genetic Relatedness (Mean GRM)", y = "Prediction Reliability") +
+      theme_classic(base_size = 12) +
+      theme(legend.position = "none")
+  }
+  
+  if (has_plot_D) {
+    combined_figure <- (plot_A | plot_D) / (plot_B | plot_C) +
+      patchwork::plot_annotation(
+        title = 'Genomic Prediction Validation and Selection Differentials',
+        theme = theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+      )
+  } else {
+    combined_figure <- plot_A / (plot_B | plot_C) +
+      patchwork::plot_annotation(
+        title = 'Genomic Prediction Validation and Selection Differentials',
+        theme = theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5))
+      )
+  }
   
   if (save_output) {
     pdf_file <- paste0(output_prefix, "_Figure.pdf")

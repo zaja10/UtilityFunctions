@@ -10,6 +10,7 @@ evaluate_gs_predictions(
   training_ids,
   target_term,
   g_inv = NULL,
+  grm = NULL,
   output_prefix = "GS_Predictions",
   top_pct = 0.95,
   save_output = TRUE
@@ -27,6 +28,9 @@ evaluate_gs_predictions(
 
 \item{g_inv}{Optional. The inverse Genomic Relationship Matrix (GRM) used in the model, 
 used for diagnosing missing targets. Expected to have dimnames corresponding to IDs.}
+
+\item{grm}{Optional. The Genomic Relationship Matrix (GRM). If provided, it is used to calculate
+Genetic Relatedness (row means) for plotting.}
 
 \item{output_prefix}{Character. Prefix for the output CSV and PDF files. Default \code{"GS_Predictions"}.}
 

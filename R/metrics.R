@@ -1,11 +1,3 @@
-﻿#' Genetic Metrics Suite
-#'
-#' A unified collection of functions for calculating heritability, reliabilities,
-#' and genetic gain from ASReml models and phenotypic data.
-#'
-#' @name genetic_metrics
-NULL
-
 #' Calculate Heritability and Reliability
 #'
 #' Computes broad-sense heritability metrics from ASReml models.

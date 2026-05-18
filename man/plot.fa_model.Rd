@@ -9,7 +9,7 @@
 \arguments{
 \item{x}{Object of class `fa_model`.}
 
-\item{type}{String type of plot: "fast", "heatmap", "latent_reg", "biplot", "vaf", "d_opt", "diff".}
+\item{type}{String type of plot: "fast", "heatmap".}
 
 \item{factor}{Numeric or Vector. Factor(s) to plot (for biplots/regressions).}
 

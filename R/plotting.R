@@ -1,11 +1,4 @@
-#' Unified Visualization Utilities
-#'
-#' @import ggplot2
-#' @importFrom stats lm predict residuals
-#' @importFrom grDevices hcl.colors
-#' @importFrom graphics image layout par box axis points grid plot legend
-#' @name plotting_utils
-NULL
+
 
 #' Default Checks
 #'
@@ -16,7 +9,7 @@ DEFAULT_CHECKS <- c("17-8930", "US16-IL-063-063", "25R76", "AgriMAXX 490", "07-1
 #' Master Visualization Suite for Factor Analytic Models
 #'
 #' @param x Object of class `fa_model`.
-#' @param type String type of plot: "fast", "heatmap", "latent_reg", "biplot", "vaf", "d_opt", "diff".
+#' @param type String type of plot: "fast", "heatmap".
 #' @param factor Numeric or Vector. Factor(s) to plot (for biplots/regressions).
 #' @param n_label Integer. Number of top genotypes to label (default 5).
 #' @param highlight Character vector. Genotypes to highlight.
@@ -27,18 +20,8 @@ plot.fa_model <- function(x, type = "fast", factor = NULL, n_label = 5, highligh
     .plot_fast(x, n_label, highlight)
   } else if (type == "heatmap") {
     .plot_heat(x)
-  } else if (type == "latent_reg") {
-    .plot_reg(x, factor, highlight, n_label)
-  } else if (type == "biplot") {
-    .plot_biplot_static(x, highlight, if (is.null(factor)) c(1, 2) else factor)
-  } else if (type == "vaf") {
-    .plot_vaf(x)
-  # } else if (type == "d_opt") {
-  #   .plot_dopt(calculate_d_optimality(x))
-  } else if (type == "diff") {
-    .plot_diff_generalized(x, ...)
   } else {
-    stop("Unknown type.")
+    stop("Unknown type. Options are 'fast' or 'heatmap'.")
   }
 }
 
@@ -169,20 +152,4 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
-.plot_reg <- function(x, fac, h, n) {
-  # Placeholder for brevity - logic preserved in principle
-  NULL
-}
-.plot_biplot_static <- function(x, highlight, fac) {
-  # Placeholder
-  NULL
-}
-.plot_vaf <- function(x) {
-  NULL
-}
-.plot_dopt <- function(d) {
-  NULL
-}
-.plot_diff_generalized <- function(x, ...) {
-  NULL
-}
+

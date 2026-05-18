@@ -1,7 +1,4 @@
-#' ASReml Utility Wrapper
-#'
-#' @name utils_asreml
-NULL
+
 
 #' Check Availability
 #' @export
