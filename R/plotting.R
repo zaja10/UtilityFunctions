@@ -13,21 +13,33 @@ DEFAULT_CHECKS <- c("17-8930", "US16-IL-063-063", "25R76", "AgriMAXX 490", "07-1
 #' @param interactive Logical. If TRUE, wraps the ggplot in `plotly::ggplotly()`.
 #' @param ... Additional arguments passed to specific plot methods.
 #' @export
+#' Master Visualization Suite for Factor Analytic Models
+#'
+#' @param x Object of class `fa_model`.
+#' @param type String type of plot: "fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster".
+#' @param factor Integer. Which factor to use for latent regression (default 1).
+#' @param n_label Integer. Number of top genotypes to highlight (default 5).
+#' @param highlight Character vector. Specific genotypes to highlight.
+#' @param show_labels Logical. If TRUE, adds text labels to highlighted genotypes.
+#' @param interactive Logical. If TRUE, wraps the ggplot in `plotly::ggplotly()`.
+#' @param ... Additional arguments passed to specific plot methods.
+#' @export
 plot.fa_model <- function(x,
                           type = c("fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster"),
+                          factor = 1,
                           n_label = 5,
                           highlight = NULL,
+                          show_labels = TRUE,
                           interactive = FALSE,
                           ...) {
-  # match.arg ensures the user provides a valid option, throwing a clean error otherwise
   type <- match.arg(type)
 
   p <- switch(type,
-    "fast"       = .plot_fast(x, n_label, highlight),
+    "fast"       = .plot_fast(x, n_label, highlight, show_labels),
     "heatmap"    = .plot_heat(x),
     "vaf"        = .plot_vaf(x),
-    "biplot"     = .plot_biplot(x, n_label, highlight),
-    "latent_reg" = .plot_latent_reg(x, n_label, highlight),
+    "biplot"     = .plot_biplot(x, n_label, highlight, show_labels),
+    "latent_reg" = .plot_latent_reg(x, factor, n_label, highlight),
     "cluster"    = .plot_cluster(x)
   )
 
@@ -279,16 +291,27 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
     theme_genetics() + ggplot2::theme(legend.position = "bottom", legend.title = ggplot2::element_blank())
 }
 
-.plot_latent_reg <- function(x, n, h) {
+.plot_latent_reg <- function(x, fac_num, n, h) {
   if (is.null(x$scores$rotated)) stop("Scores missing.")
 
+  # Validate that the requested factor exists in the model
+  if (fac_num < 1 || fac_num > x$meta$k) {
+    stop(sprintf("Requested factor %d exceeds available factors (k = %d).", fac_num, x$meta$k))
+  }
+
+  # Predict GEBVs using the full FA component
   pred_mat <- x$scores$rotated %*% t(x$loadings$rotated)
   long_pred <- as.data.frame(as.table(pred_mat))
   colnames(long_pred) <- c("Genotype", "Environment", "Predicted_GEBV")
 
-  env_loadings <- data.frame(Environment = rownames(x$loadings$rotated), Fac1 = x$loadings$rotated[, 1])
+  # Dynamically extract the requested factor loading for the X-axis
+  env_loadings <- data.frame(
+    Environment = rownames(x$loadings$rotated),
+    Target_Factor = x$loadings$rotated[, fac_num]
+  )
   long_pred <- merge(long_pred, env_loadings, by = "Environment")
 
+  # Setup highlighting
   long_pred$Type <- "Other"
   if (!is.null(x$fast)) {
     top_gens <- head(x$fast$Genotype[order(x$fast$OP, decreasing = TRUE)], n)
@@ -297,14 +320,18 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
   if (!is.null(h)) long_pred$Type[long_pred$Genotype %in% h] <- "Highlight"
   long_pred$Type <- factor(long_pred$Type, levels = c("Highlight", "Top Candidate", "Other"))
 
-  ggplot2::ggplot(long_pred, ggplot2::aes(x = Fac1, y = Predicted_GEBV, group = Genotype)) +
+  # Get variance explained for dynamic axis labeling
+  var_exp <- round(x$meta$var_explained[fac_num], 1)
+
+  ggplot2::ggplot(long_pred, ggplot2::aes(x = Target_Factor, y = Predicted_GEBV, group = Genotype)) +
     ggplot2::geom_line(ggplot2::aes(color = Type, alpha = Type, linewidth = Type)) +
     ggplot2::scale_color_manual(values = c("Highlight" = "#e74c3c", "Top Candidate" = "#3498db", "Other" = "grey85")) +
     ggplot2::scale_alpha_manual(values = c("Highlight" = 1, "Top Candidate" = 1, "Other" = 0.4)) +
     ggplot2::scale_linewidth_manual(values = c("Highlight" = 1.2, "Top Candidate" = 1, "Other" = 0.5)) +
     ggplot2::labs(
-      title = "Latent Regression (Reaction Norms)",
-      x = "Environmental Factor 1 Loading", y = "Predicted Interaction GEBV"
+      title = paste("Latent Regression (Reaction Norms) - Factor", fac_num),
+      x = paste0("Environmental Factor ", fac_num, " Loading (", var_exp, "% Var Explained)"),
+      y = "Predicted Interaction GEBV"
     ) +
     theme_genetics() +
     ggplot2::theme(legend.position = "bottom", legend.title = ggplot2::element_blank())
