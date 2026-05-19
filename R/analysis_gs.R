@@ -234,10 +234,40 @@ evaluate_gs_predictions <- function(
   mean_target <- mean(blups_assigned$GEBV_OP[blups_assigned$status == "Target"], na.rm = TRUE)
 
   if (!is.null(grm)) {
-    cli::cli_alert_info("Calculating Genetic Relatedness from GRM for plotting...")
-    relatedness <- rowMeans(grm, na.rm = TRUE)
-    rel_df <- data.frame(id = rownames(grm), Relatedness = relatedness, stringsAsFactors = FALSE)
-    blups_assigned <- merge(blups_assigned, rel_df, by = "id", all.x = TRUE)
+    cli::cli_alert_info("Partitioning GRM to calculate targeted target-to-training relatedness metrics...")
+
+    grm_ids <- rownames(grm)
+    valid_train <- intersect(training_ids, grm_ids)
+    valid_target <- intersect(blups_assigned$id[blups_assigned$status == "Target"], grm_ids)
+
+    if (length(valid_train) == 0 || length(valid_target) == 0) {
+      cli::cli_alert_warning("Insufficient GRM overlap with training/target IDs. Skipping relatedness plots.")
+    } else {
+      # 1. Isolate the target-to-training submatrix
+      G_target_train <- grm[valid_target, valid_train, drop = FALSE]
+
+      # 2. Calculate the metrics per target line
+      rel_target <- data.frame(
+        id = valid_target,
+        Mean_Rel = rowMeans(G_target_train, na.rm = TRUE),
+        Max_Rel = apply(G_target_train, 1, max, na.rm = TRUE),
+        stringsAsFactors = FALSE
+      )
+
+      # For plotting context, calculate training lines' relation to the REST of the training set
+      G_train_train <- grm[valid_train, valid_train, drop = FALSE]
+      diag(G_train_train) <- NA # Remove self-relatedness (1.0) to find true max relative
+
+      rel_train <- data.frame(
+        id = valid_train,
+        Mean_Rel = rowMeans(G_train_train, na.rm = TRUE),
+        Max_Rel = apply(G_train_train, 1, max, na.rm = TRUE),
+        stringsAsFactors = FALSE
+      )
+
+      rel_df <- rbind(rel_target, rel_train)
+      blups_assigned <- merge(blups_assigned, rel_df, by = "id", all.x = TRUE)
+    }
   }
 
   plot_A <- ggplot(blups_assigned, aes(x = .data$GEBV_OP, fill = .data$status)) +
@@ -289,15 +319,21 @@ evaluate_gs_predictions <- function(
   }
 
   has_plot_D <- FALSE
-  if ("Relatedness" %in% names(blups_assigned)) {
+  if ("Max_Rel" %in% names(blups_assigned)) {
     has_plot_D <- TRUE
-    plot_D <- ggplot(blups_assigned, aes(x = .data$Relatedness, y = .data$Reliability, color = .data$status)) +
-      geom_point(alpha = 0.7, size = 2) +
-      geom_smooth(method = "lm", se = FALSE) +
-      scale_color_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
-      labs(title = "D. Relatedness vs Reliability", x = "Genetic Relatedness (Mean GRM)", y = "Prediction Reliability") +
-      theme_classic(base_size = 12) +
-      theme(legend.position = "none")
+
+    plot_D <- ggplot2::ggplot(blups_assigned, ggplot2::aes(x = .data$Max_Rel, y = .data$Reliability)) +
+      ggplot2::geom_point(ggplot2::aes(color = .data$status), alpha = 0.7, size = 2, stroke = 0) +
+      # Fit separate regressions for Training and Target to show the distinct information flows
+      ggplot2::geom_smooth(ggplot2::aes(group = .data$status, color = .data$status), method = "lm", se = FALSE, linewidth = 1) +
+      ggplot2::scale_color_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
+      ggplot2::labs(
+        title = "D. Relatedness vs Prediction Reliability",
+        x = expression("Max Genomic Relationship to Training (" * g[max] * ")"),
+        y = "Theoretical Reliability (r²)"
+      ) +
+      ggplot2::theme_classic(base_size = 12) +
+      ggplot2::theme(legend.position = "none")
   }
 
   if (has_plot_D) {
