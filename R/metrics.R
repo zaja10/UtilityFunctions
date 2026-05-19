@@ -1,123 +1,3 @@
-#' Calculate Heritability and Reliability
-#'
-#' Computes broad-sense heritability metrics from ASReml models.
-#' Supports both "Cullis" (Generalized Heritability) and "Standard" (Line Mean Reliability) methods.
-#'
-#' @param model A fitted \code{asreml} object or a list of such objects.
-#' @param method Character string. "Cullis" (default) or "Standard".
-#' @param id_var Character string. Name of the genetic factor (default "Genotype").
-#' @param vcov Logical. If TRUE, forces usage of the variance-covariance matrix (required for Standard).
-#'   For large number of genotypes (>2000), defaults to FALSE to avoid memory exhaustion unless explicitly set.
-#'
-#' @details
-#' \strong{Methods:}
-#' \itemize{
-#'   \item \strong{Cullis:} \eqn{1 - \frac{\bar{v}_{\Delta}^{BLUP}}{2 \sigma^2_g}}. Based on the average standard error of difference (SED). Recommended for unbalanced trials.
-#'   \item \strong{Standard:} \eqn{1 - \frac{PEV}{\sigma^2_g}}. Based on the prediction error variance.
-#' }
-#'
-#' @return A named vector of heritability values.
-#' @importFrom stats predict density
-#' @export
-calculate_heritability <- function(model, method = "Cullis", id_var = "Genotype", vcov = NULL) {
-    # Recursion for lists
-    if (is.list(model) && !inherits(model, "asreml")) {
-        return(sapply(model, function(m) calculate_heritability(m, method, id_var, vcov)))
-    }
-
-    if (!inherits(model, "asreml")) {
-        return(NA)
-    }
-    if (!model$converge) {
-        warning("Model did not converge.")
-        return(NA)
-    }
-
-    # 1. Extract Genetic Variance (Vg)
-    summ <- summary(model)$varcomp
-    # Regex to find the variance component for the ID
-    # Matches "Genotype", "Genotype!Genotype", "vm(Genotype", "ide(Genotype"
-    pat <- paste0("^(", id_var, ")(!|$)|vm\\(", id_var, "|ide\\(", id_var)
-
-    idx <- grep(pat, rownames(summ))
-    if (length(idx) == 0) {
-        warning(paste("No variance component found for", id_var))
-        return(NA)
-    }
-
-    # Preference: Take the first match that isn't bound at boundary (optional refinement)
-    Vg <- summ[idx[1], "component"]
-
-    if (Vg <= 1e-6) {
-        warning("Genetic variance is effectively zero.")
-        return(0)
-    }
-
-    # 2. Logic Control
-    n_gen <- length(levels(model$model[[id_var]]))
-
-    # Auto-switch to lighter method if N is large
-    if ((is.null(vcov) && n_gen > 2000) || method == "Cullis") {
-        use_vcov <- FALSE
-    } else {
-        use_vcov <- TRUE
-    }
-
-    if (method == "Standard") use_vcov <- TRUE # Mandatory for Standard
-
-    # 3. Prediction
-    # We suppress warnings about "aliasing" which are common in prediction
-    # Predict only the genetic term.
-
-    preds <- tryCatch(
-        {
-            suppressWarnings(
-                predict(model, classify = id_var, vcov = use_vcov, sed = !use_vcov)
-            )
-        },
-        error = function(e) {
-            warning("Prediction failed: ", e$message)
-            return(NULL)
-        }
-    )
-
-    if (is.null(preds)) {
-        return(NA)
-    }
-
-    # 4. Calculation
-    H2 <- NA
-
-    if (method == "Cullis") {
-        if (!is.null(preds$sed)) {
-            # Use SED square
-            av_sed_sq <- mean(preds$sed^2, na.rm = TRUE) # SED matrix is actually provided as dense or we calculate from pvals?
-            # ASReml predict returns $sed as a matrix usually
-            # But wait, predict(sed=TRUE) returns the matrix in $sed
-
-            # Note: For large N, we might only have Average SED if not full matrix?
-            # asreml returns full matrix for sed=TRUE usually.
-
-            if (is.matrix(preds$sed)) {
-                vd <- preds$sed^2
-                av_sed_diff <- mean(vd[upper.tri(vd)], na.rm = TRUE)
-                H2 <- 1 - (av_sed_diff / (2 * Vg))
-            } else {
-                # Fallback if SED is just a value? Unlikely in asreml-r
-                warning("SED matrix not returned.")
-            }
-        }
-    } else if (method == "Standard") {
-        if (!is.null(preds$vcov)) {
-            pev <- diag(preds$vcov)
-            mean_pev <- mean(pev, na.rm = TRUE)
-            H2 <- 1 - (mean_pev / Vg)
-        }
-    }
-
-    return(max(0, min(1, H2))) # Clamp to 0-1
-}
-
 
 #' Calculate Genetic Gain
 #'
@@ -198,130 +78,102 @@ calculate_genetic_gain <- function(input, ...) {
     }
 }
 
-#' Calculate Heritability from List
+#' Calculate Multi-Environment Heritability
 #'
-#' Robustly calculates heritability for a list of ASReml models.
+#' Calculates plot-basis heritability (broad-sense H2 and narrow-sense h2) 
+#' for multi-environment trials (MET) from a fitted ASReml model with diagonal 
+#' or factor analytic covariance structures.
 #'
-#' @param model_list List of ASReml objects.
-#' @param id Character. The genetic term name (default "Genotype").
+#' @param model A fitted \code{asreml} object.
+#' @param gdrop_term Character string. The name of the non-additive/ungenotyped genetic term in vparameters (default "studyName:gdrop").
+#' @param gkeep_term Character string. The name of the additive/genotyped genetic term in vparameters (default "studyName:vm(gkeep, G.inv)").
+#' @param env_var Character string. The environment factor name prefix (default "studyName").
 #'
-#' @return A named vector of H2 values.
+#' @return A data frame containing:
+#' \describe{
+#'   \item{Trial}{The name of the trial/environment.}
+#'   \item{Vg_add}{Additive genetic variance component.}
+#'   \item{Vg_na}{Non-additive genetic variance component.}
+#'   \item{Vg_total}{Total genetic variance (Vg_add + Vg_na).}
+#'   \item{V_spatial}{Spatial/residual variance component.}
+#'   \item{V_units}{Units/nugget variance component.}
+#'   \item{H2}{Broad-sense heritability on a plot-basis.}
+#'   \item{h2}{Narrow-sense heritability on a plot-basis.}
+#' }
 #' @export
-calculate_h2_from_list <- function(model_list, id = "Genotype") {
-    # Check if input is a list
-    if (!is.list(model_list)) {
-        stop("Input 'model_list' must be a list.")
+calculate_met_h2 <- function(model, gdrop_term = "studyName:gdrop", gkeep_term = "studyName:vm(gkeep, G.inv)", env_var = "studyName") {
+    check_asreml_availability()
+
+    if (!inherits(model, "asreml")) {
+        stop("Input must be a valid asreml model.")
     }
 
-    # Initialize an empty list to store the results
-    h2_results <- list()
+    # 1. Extract vparameters
+    summ_list <- summary(model, vparameters = TRUE)
+    if (!"vparameters" %in% names(summ_list)) {
+        stop("Could not extract vparameters from the model summary.")
+    }
+    varp <- summ_list$vparameters
 
-    # Loop through each model in the list 'model_list'
-    for (model_name in names(model_list)) {
-        message(paste("Processing model:", model_name))
-        asr <- model_list[[model_name]]
+    # 2. Extract Genetic Components
+    if (!gdrop_term %in% names(varp)) {
+        stop(paste("gdrop term", gdrop_term, "not found in vparameters. Available names:", paste(names(varp), collapse = ", ")))
+    }
+    if (!gkeep_term %in% names(varp)) {
+        stop(paste("gkeep term", gkeep_term, "not found in vparameters. Available names:", paste(names(varp), collapse = ", ")))
+    }
 
-        # --- Basic Checks ---
-        # Check if the element is actually an asreml object and converged
-        if (is.null(asr) || !inherits(asr, "asreml")) {
-            message(paste("Skipping", model_name, "- Not a valid asreml object."))
-            h2_results[[model_name]] <- NA # Store NA for invalid objects
-            next # Go to the next iteration
-        }
-        if (!asr$converge) {
-            message(paste("Skipping", model_name, "- Model did not converge."))
-            h2_results[[model_name]] <- NA # Store NA for non-converged models
-            next # Go to the next iteration
-        }
+    vna_raw <- varp[[gdrop_term]]
+    va_raw  <- varp[[gkeep_term]]
 
-        # --- Calculation within tryCatch ---
-        h2_calc <- tryCatch(
-            {
-                # Extract response variable name (safer way)
-                response <- NA
-                # Try different ways to access the response variable name based on asreml versions/call structure
-                if (!is.null(asr$call$fixed) && length(as.list(asr$call$fixed)) >= 2) {
-                    response <- as.character(as.list(asr$call$fixed)[[2]])
-                } else if (!is.null(asr$call[[2]]) && length(asr$call[[2]]) >= 2) {
-                    # Fallback for older style or direct formula input potentially
-                    response <- as.character(asr$call[[2]][[2]])
-                }
-                if (is.na(response)) {
-                    warning(paste("Could not determine response variable name for", model_name))
-                    response <- "h2" # Default name if extraction fails
-                }
+    clean_trial <- function(n) {
+        n <- sub(".*!", "", n)
+        n <- sub(paste0("^", env_var, "_"), "", n)
+        return(n)
+    }
 
-                # Run predict with vcov=TRUE (this is where the "long vector" error might occur)
-                # Note: 'only=id' is removed as it wasn't in the final user script and can sometimes cause issues
-                mypred <- predict(asr, classify = id, maxit = 1, vcov = TRUE) # Added average, sed
+    trial_keys <- clean_trial(names(vna_raw))
 
-                # Get the prediction vcov matrix
-                if (!"vcov" %in% names(mypred)) {
-                    stop("vcov component missing from predict output.")
-                }
-                my.vcov <- mypred$vcov
+    # 3. Build Results Data Frame
+    results <- data.frame(
+        Trial = trial_keys,
+        Vg_add = as.numeric(va_raw),
+        Vg_na = as.numeric(vna_raw),
+        V_spatial = NA_real_,
+        V_units = 0, # Default to 0 as some trials lack nugget
+        stringsAsFactors = FALSE
+    )
+    results$Vg_total <- results$Vg_add + results$Vg_na
 
-                # Find the genetic variance component index
-                summary_asr <- summary(asr, coef = FALSE) # Get summary efficiently
-                var_comp_table <- summary_asr$varcomp
+    # 4. Map Residuals and Units
+    all_param_names <- names(varp)
 
-                # Improved pattern to match id!id or vm(id, ...) more reliably
-                pattern <- paste0("^(", id, ")!|^(vm\\(", id, "[ ,])") # Matches id! or vm(id, or vm(id<space>
-                which.vc <- grep(pattern, rownames(var_comp_table))
+    for (i in 1:nrow(results)) {
+        tr <- results$Trial[i]
 
-                # Check if exactly one component was found
-                if (length(which.vc) != 1) {
-                    # Try a simpler grep if the first failed, maybe simpler naming used
-                    which.vc <- grep(paste0("^", id, "$"), rownames(var_comp_table)) # Match exact term name
-                    if (length(which.vc) != 1) {
-                        stop(paste0(
-                            "Could not uniquely identify variance component for '", id,
-                            "'. Found: ", length(which.vc), " matches. Check component names: ",
-                            paste(rownames(var_comp_table), collapse = ", ")
-                        ))
-                    }
-                }
-                Vg <- var_comp_table[which.vc, "component"]
-
-                # Check if Vg is valid
-                if (is.na(Vg) || Vg <= 1e-8) {
-                    stop(paste("Genetic variance component for '", id, "' is zero, negative, or NA (", Vg, ")."))
-                }
-
-                # Calculate h2 using diag() - this might fail for large matrices
-                h2_value <- 1 - sum(diag(my.vcov)) / (Vg * nrow(my.vcov))
-
-                # Ensure h2 is within bounds [0, 1]
-                h2_value <- max(0, min(1, h2_value))
-
-                # Name the result
-                names(h2_value) <- response
-
-                # Return the calculated value
-                h2_value
-            },
-            error = function(e) {
-                # If any error occurred in the try block
-                message(paste("Error processing", model_name, ":", e$message))
-                return(NA) # Return NA if calculation fails
+        # A. Extract Spatial Variance
+        if (tr %in% all_param_names) {
+            results$V_spatial[i] <- varp[[tr]][1]
+        } else {
+            spatial_pattern <- paste0(env_var, "_", tr, "!R")
+            match_idx <- grep(spatial_pattern, all_param_names, fixed = TRUE)
+            if (length(match_idx) > 0) {
+                results$V_spatial[i] <- varp[[match_idx[1]]][1]
             }
-        )
+        }
 
-        # Store the result (either the h2 value or NA)
-        h2_results[[model_name]] <- h2_calc
+        # B. Extract Units (Nugget)
+        unit_pattern <- paste0("'", tr, "'):units")
+        match_unit <- grep(unit_pattern, all_param_names, fixed = TRUE)
+        if (length(match_unit) > 0) {
+            results$V_units[i] <- varp[[match_unit[1]]][1]
+        }
     }
 
-    # --- Combine results ---
-    # Unlist to return a named vector
-    h2_vector <- unlist(h2_results)
+    # 5. Calculate Heritability (Plot-Basis)
+    results$H2 <- results$Vg_total / (results$Vg_total + results$V_spatial + results$V_units)
+    results$h2 <- results$Vg_add / (results$Vg_add + results$V_spatial + results$V_units)
 
-    # Print summary of NAs at the end
-    message("------------------------------------")
-    message("Heritability calculation summary:")
-    message(paste("Number of models processed:", length(model_list)))
-    message(paste("Number of successful calculations:", sum(!is.na(h2_vector))))
-    message(paste("Number of failed calculations (NA):", sum(is.na(h2_vector))))
-    message("------------------------------------")
-
-    return(h2_vector)
+    return(results)
 }
+

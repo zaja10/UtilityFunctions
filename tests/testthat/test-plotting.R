@@ -25,15 +25,10 @@ test_that("plot.fa_model returns a ggplot object", {
     expect_s3_class(p2, "ggplot")
 
     # Test Biplot
-    # Test Biplot
-    p3 <- plot(mock_model, type = "biplot")
-    # Biplot temporarily returning NULL during refactor
-    expect_true(is.null(p3) || inherits(p3, "ggplot"))
+    expect_error(plot(mock_model, type = "biplot"))
 
     # Test VAF
-    p4 <- plot(mock_model, type = "vaf")
-    # VAF temporarily returning NULL during refactor
-    expect_true(is.null(p4) || inherits(p4, "ggplot"))
+    expect_error(plot(mock_model, type = "vaf"))
 })
 
 
