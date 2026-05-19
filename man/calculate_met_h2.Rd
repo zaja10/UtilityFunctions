@@ -34,7 +34,7 @@ A data frame containing:
 }
 }
 \description{
-Calculates plot-basis heritability (broad-sense H2 and narrow-sense h2) 
-for multi-environment trials (MET) from a fitted ASReml model with diagonal 
+Calculates plot-basis heritability (broad-sense H2 and narrow-sense h2)
+for multi-environment trials (MET) from a fitted ASReml model with diagonal
 or factor analytic covariance structures.
 }

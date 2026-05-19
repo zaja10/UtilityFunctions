@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Stage 2: Factor Analytic Selection Tools"
 output: rmarkdown::html_vignette
 vignette: >
@@ -75,5 +75,5 @@ The core strength of `UtilityFunctions` is the one-step extraction and the publi
 ### Key Functions Used
 
 * `validate_met_data()`: Checks data before you start.
-* `fit_fa_model()`: Extracts loadings/scores robustly.
+* `fa.asreml()`: Extracts loadings/scores robustly.
 * `plot.fa_model()`: Generates standard figures.

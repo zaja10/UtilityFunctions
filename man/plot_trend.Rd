@@ -21,13 +21,12 @@ plot_trend(
 
 \item{y}{String. Y-axis column (Yield or BLUP).}
 
-\item{checks}{Character vector. Names of checks to highlight (only for genetic mode).
-Defaults to \code{DEFAULT_CHECKS}.}
+\item{checks}{Character vector. Names of checks to highlight (only for genetic mode).}
 }
 \description{
 Visualizes data over time (e.g., Year).
 \itemize{
-  \item "Phenotypic": Boxplots + Regression (Rate of Change).
-  \item "Genetic": Scatterplot of BLUPs + Check highlighting.
+  \item "phenotypic": Boxplots + Regression (Rate of Change).
+  \item "genetic": Scatterplot of BLUPs + Check highlighting.
 }
 }

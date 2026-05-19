@@ -1,4 +1,3 @@
-
 #' Calculate Genetic Gain
 #'
 #' Estimates genetic gain using either "Realized" (Historical Regression) or
@@ -80,8 +79,8 @@ calculate_genetic_gain <- function(input, ...) {
 
 #' Calculate Multi-Environment Heritability
 #'
-#' Calculates plot-basis heritability (broad-sense H2 and narrow-sense h2) 
-#' for multi-environment trials (MET) from a fitted ASReml model with diagonal 
+#' Calculates plot-basis heritability (broad-sense H2 and narrow-sense h2)
+#' for multi-environment trials (MET) from a fitted ASReml model with diagonal
 #' or factor analytic covariance structures.
 #'
 #' @param model A fitted \code{asreml} object.
@@ -124,7 +123,7 @@ calculate_met_h2 <- function(model, gdrop_term = "studyName:gdrop", gkeep_term =
     }
 
     vna_raw <- varp[[gdrop_term]]
-    va_raw  <- varp[[gkeep_term]]
+    va_raw <- varp[[gkeep_term]]
 
     clean_trial <- function(n) {
         n <- sub(".*!", "", n)
@@ -176,4 +175,3 @@ calculate_met_h2 <- function(model, gdrop_term = "studyName:gdrop", gkeep_term =
 
     return(results)
 }
-

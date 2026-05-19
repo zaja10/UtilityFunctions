@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Stage 1: Spatial Diagnostics & Analysis"
 output: rmarkdown::html_vignette
 vignette: >
@@ -63,8 +63,8 @@ for (y in years) {
   }
 }
 
-# Convert Yield to t/ha
-data$Yield <- convert_buac_to_tha(data$Yield_bu, crop = "wheat")
+# Convert Yield to t/ha (60 lbs/bu standard)
+data$Yield <- data$Yield_bu * 0.06725
 head(data)
 ```
 
@@ -72,76 +72,41 @@ head(data)
 
 Connectivity is vital for multi-year analysis. If two years share no genotypes, they cannot be analyzed in the same single-stage model effectively.
 
-### Count-based Connectivity
+We can check for trial connectivity (detecting disconnected groups/islands) using the `check_met_connectivity` function.
 
-The default method checks the raw count of shared genotypes. `order_by = "Year"` ensures the axes are chronological.
-
-```{r conn_count}
-plot_connectivity(data,
-  x = "Year", trace = "Genotype",
-  method = "count", order_by = "Year"
-)
-```
-
-### Jaccard Connectivity (Normalized)
-
-If trial sizes vary significantly, use the Jaccard index (Intersection / Union) to get a normalized measure of overlap (0 to 1).
-
-```{r conn_jacc}
-plot_connectivity(data,
-  x = "Year", trace = "Genotype",
-  method = "jaccard", order_by = "Year"
-)
+```{r connectivity_check}
+conn_res <- check_met_connectivity(data, trial_col = "Year", gen_col = "Genotype")
+print(conn_res)
 ```
 
 # 3. Spatial Integrity
 
 ### Visualizing a Trial Map
 
-You can inspect the layout of any specific trial.
+You can inspect the layout of any specific trial using `plot_spatial` on a filtered subset of the data.
 
 ```{r map_raw}
 # A complete trial
-plot_trial_map(data,
-  trial_val = "Loc1_2018", trial_col = "Trial",
-  row = "Row", col = "Column", val = "Yield"
+plot_spatial(data[data$Trial == "Loc1_2018", ],
+  row = "Row", col = "Column", fill = "Yield"
 )
 ```
 
-### Padding Missing Plots
-
-In `Loc1_2019`, we artificially removed plots. Let's visualize it to see the gaps (grey squares).
+In `Loc1_2019`, we artificially removed plots. Let's visualize it to see the layout.
 
 ```{r map_gap}
 # A trial with gaps
-plot_trial_map(data,
-  trial_val = "Loc1_2019", trial_col = "Trial",
-  row = "Row", col = "Column", val = "Yield"
+plot_spatial(data[data$Trial == "Loc1_2019", ],
+  row = "Row", col = "Column", fill = "Yield"
 )
-```
-
-### Bulk Padding
-
-To prepare the entire dataset for spatial analysis (e.g. Spline/AR1 models), we can pad all trials at once.
-
-```{r padding}
-# Pad all trials by group
-data_padded <- pad_trial_layout(data, row = "Row", col = "Column", group_cols = "Trial")
-
-# Check dimensions
-dim(data)
-dim(data_padded) # Should be larger due to added NA rows
 ```
 
 # 4. Temporal Trends
 
-Finally, we check for yield trends over time. The `plot_met_trend` function provides a 2-panel view:
-1.  **Distribution**: Boxplots showing the spread of data per year.
-2.  **Rate of Change**: A line plot of means with a linear regression trend line and statistics ($R^2$, Slope).
+Finally, we check for yield trends over time. The `plot_trend` function provides a ggplot2-based boxplot view showing the spread of data per year and the linear regression trend of the means.
 
-```{r trends, fig.height=8}
-plot_met_trend(data, x = "Year", y = "Yield", main = "Wheat Yield Trend")
+```{r trends}
+plot_trend(data, mode = "phenotypic", x = "Year", y = "Yield")
 ```
 
-The regression statistics in the top-left legend quantify the genetic gain (t/ha per year).
 

@@ -4,18 +4,25 @@
 \alias{plot.fa_model}
 \title{Master Visualization Suite for Factor Analytic Models}
 \usage{
-\method{plot}{fa_model}(x, type = "fast", factor = NULL, n_label = 5, highlight = NULL, ...)
+\method{plot}{fa_model}(
+  x,
+  type = c("fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster"),
+  n_label = 5,
+  highlight = NULL,
+  interactive = FALSE,
+  ...
+)
 }
 \arguments{
 \item{x}{Object of class `fa_model`.}
 
-\item{type}{String type of plot: "fast", "heatmap".}
+\item{type}{String type of plot: "fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster".}
 
-\item{factor}{Numeric or Vector. Factor(s) to plot (for biplots/regressions).}
+\item{n_label}{Integer. Number of top genotypes to label/highlight (default 5).}
 
-\item{n_label}{Integer. Number of top genotypes to label (default 5).}
+\item{highlight}{Character vector. Specific genotypes to highlight.}
 
-\item{highlight}{Character vector. Genotypes to highlight.}
+\item{interactive}{Logical. If TRUE, wraps the ggplot in `plotly::ggplotly()`.}
 
 \item{...}{Additional arguments passed to specific plot methods.}
 }

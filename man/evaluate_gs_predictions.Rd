@@ -26,7 +26,7 @@ evaluate_gs_predictions(
 \item{target_term}{Character. The base random term to extract from the ASReml model
 (e.g., \code{"fa(studyName, 2):vm(gkeep, G.inv)"}).}
 
-\item{g_inv}{Optional. The inverse Genomic Relationship Matrix (GRM) used in the model, 
+\item{g_inv}{Optional. The inverse Genomic Relationship Matrix (GRM) used in the model,
 used for diagnosing missing targets. Expected to have dimnames corresponding to IDs.}
 
 \item{grm}{Optional. The Genomic Relationship Matrix (GRM). If provided, it is used to calculate
@@ -46,8 +46,8 @@ A list containing the following elements:
 }
 \description{
 Extracts latent scores and prediction error variances (PEVs) from a fitted
-ASReml factor analytic (FA) model. Following the FAST framework (Smith & Cullis, 2018), 
+ASReml factor analytic (FA) model. Following the FAST framework (Smith & Cullis, 2018),
 this function applies a Principal Component (SVD) rotation to the raw FA parameters.
-Overall Performance (OP) is defined by the rotated 1st Factor, while Stability (RMSD) 
+Overall Performance (OP) is defined by the rotated 1st Factor, while Stability (RMSD)
 is calculated from the higher-order rotated factors (k >= 2) representing crossover GxE.
 }
