@@ -50,7 +50,6 @@ plot.fa_model <- function(x,
       warning("The 'plotly' package is required for interactive plots. Returning static plot.")
     }
   }
-
   return(p)
 }
 
@@ -156,7 +155,8 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
 # Internal Implementations for plot.fa_model
 # -------------------------------------------------------------------------
 
-.plot_fast <- function(x, n, h) {
+# The updated internal FAST plot function WITH the show_labels argument
+.plot_fast <- function(x, n, h, show_labels) {
   if (is.null(x$fast)) stop("No FAST data available.")
   df <- x$fast
   df <- df[order(df$OP, decreasing = TRUE), ]
@@ -180,12 +180,15 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
     theme_genetics() +
     ggplot2::theme(legend.position = "bottom", legend.title = ggplot2::element_blank())
 
-  if (requireNamespace("ggrepel", quietly = TRUE)) {
+  # Toggle for text labels
+  if (show_labels && requireNamespace("ggrepel", quietly = TRUE)) {
     labels_df <- df[df$Type != "Other", ]
-    p <- p + ggrepel::geom_label_repel(
-      data = labels_df, ggplot2::aes(label = Genotype),
-      size = 3, fontface = "bold", box.padding = 0.5
-    )
+    if (nrow(labels_df) > 0) {
+      p <- p + ggrepel::geom_label_repel(
+        data = labels_df, ggplot2::aes(label = Genotype),
+        size = 3, fontface = "bold", box.padding = 0.5, show.legend = FALSE
+      )
+    }
   }
 
   return(p)
