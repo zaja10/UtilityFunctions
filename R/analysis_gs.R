@@ -32,62 +32,57 @@
 #' @importFrom stats quantile
 #' @importFrom utils head write.csv
 #' @export
-evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term,
-                                    g_inv = NULL, grm = NULL, output_prefix = "GS_Predictions",
-                                    top_pct = 0.95, save_output = TRUE) {
+evaluate_gs_predictions <- function(
+  model, target_ids, training_ids, target_term, g_inv = NULL,
+  grm = NULL, output_prefix = "GS_Predictions", top_pct = 0.95,
+  save_output = TRUE
+) {
   cli::cli_h1("Evaluating Genomic Selection Predictions (FAST Framework)")
-
   if (!inherits(model, "asreml")) {
     cli::cli_abort("Model must be an object of class {.cls asreml}")
   }
 
-  # Ensure target_term is just the base term without a specific _Comp
   base_term <- sub("_Comp[0-9]+", "", target_term)
   cli::cli_alert_info("Analyzing FA base term: {.val {base_term}}")
 
-  # -----------------------------------------------------------------------
-  # 1. Identify Factors and Raw Loadings
-  # -----------------------------------------------------------------------
-  site_var <- sub(".*fa\\(([^,]+),.*", "\\1", base_term)
-  site_var <- trimws(site_var)
-
+  # --- BUG FIX: Strict extraction of FA parameters for THIS term only ---
   vparams <- model$vparameters
-  fa_keys <- grep(paste0("^", site_var, ".*!fa[0-9]+$"), names(vparams), value = TRUE)
+  all_fa_keys <- grep("!fa[0-9]+$", names(vparams), value = TRUE)
+
+  # Remove spaces for robust matching (protects against "fa(studyName, 2)" vs "fa(studyName,2)")
+  clean_base <- gsub(" ", "", base_term)
+  clean_keys <- gsub(" ", "", all_fa_keys)
+
+  # Only keep keys that belong to the specific target_term
+  fa_keys <- all_fa_keys[grepl(clean_base, clean_keys, fixed = TRUE)]
 
   if (length(fa_keys) == 0) {
-    fa_keys <- grep("!fa[0-9]+$", names(vparams), value = TRUE)
+    cli::cli_abort("Could not find any factor loadings (!fa) specifically for the term {.val {base_term}}.")
   }
-  if (length(fa_keys) == 0) {
-    cli::cli_abort("Could not find any factor loadings (!fa) in model$vparameters.")
-  }
+  # ----------------------------------------------------------------------
 
   factors_detected <- unique(sub(".*!(fa[0-9]+)$", "\\1", fa_keys))
   k <- length(factors_detected)
   cli::cli_alert_info("Detected FA model with k = {k} factor(s). Applying SVD PC Rotation.")
 
-  # ------------------ UPDATED BLOCK ------------------
-  # Extract raw loadings matrix (Environments x Factors)
-  # The new regex looks for the text right before !faX, stopping at either a : or !
+  # The fixed regex that handles exclamation marks
   env_names <- unique(sub(".*[:!]([^:!]+)!fa[0-9]+$", "\\1", fa_keys))
-  if (length(env_names) == 0) env_names <- paste0("Env", seq_along(grep("!fa1$", fa_keys)))
+  if (length(env_names) == 0) {
+    env_names <- paste0("Env", seq_along(grep("!fa1$", fa_keys)))
+  }
 
   raw_loadings_list <- list()
   for (i in seq_len(k)) {
     fac_label <- paste0("fa", i)
-    # Subset using fa_keys rather than names(vparams) to ensure perfect dimension matching
     keys_k <- grep(paste0("!", fac_label, "$"), fa_keys, value = TRUE)
     raw_loadings_list[[i]] <- vparams[keys_k]
   }
-  # ---------------------------------------------------
+
   Lambda_raw <- do.call(cbind, raw_loadings_list)
   rownames(Lambda_raw) <- env_names
 
-  # -----------------------------------------------------------------------
-  # 2. Extract Latent Scores and PEVs Safely
-  # -----------------------------------------------------------------------
   summ_coef <- summary(model, coef = TRUE)$coef.random
   rand_names <- rownames(summ_coef)
-
   term_parts <- unlist(strsplit(base_term, ":"))
   target_idx <- seq_along(rand_names)
   for (part in term_parts) {
@@ -100,33 +95,29 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
 
   coef_sub <- summ_coef[target_idx, , drop = FALSE]
   names_sub <- rownames(coef_sub)
-
   raw_scores_list <- list()
   raw_pev_list <- list()
-
   clean_ids_master <- NULL
 
   for (i in seq_len(k)) {
     comp_pat <- paste0("_Comp", i)
     idx_k <- grep(comp_pat, names_sub, fixed = TRUE)
-
-    if (length(idx_k) == 0) next
-
+    if (length(idx_k) == 0) {
+      next
+    }
     sub_n <- names_sub[idx_k]
     sub_c <- coef_sub[idx_k, , drop = FALSE]
-
     clean_ids <- sub(paste0(".*", comp_pat, "(_|:)?"), "", sub_n)
     clean_ids <- sub("^:", "", clean_ids)
     clean_ids <- sub("vm\\([^)]+\\)_?", "", clean_ids)
-
-    if (is.null(clean_ids_master)) clean_ids_master <- clean_ids
-
+    if (is.null(clean_ids_master)) {
+      clean_ids_master <- clean_ids
+    }
     sol_col <- grep("solution|value", colnames(sub_c), ignore.case = TRUE, value = TRUE)[1]
     se_col <- grep("std", colnames(sub_c), ignore.case = TRUE, value = TRUE)[1]
     if (is.na(sol_col) || is.na(se_col)) {
       cli::cli_abort("Could not identify solution or std error columns in model coefficients.")
     }
-
     raw_scores_list[[i]] <- as.numeric(sub_c[, sol_col])
     raw_pev_list[[i]] <- as.numeric(sub_c[, se_col])^2
   }
@@ -138,13 +129,9 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
   F_raw <- do.call(cbind, raw_scores_list)
   PEV_raw <- do.call(cbind, raw_pev_list)
   rownames(F_raw) <- clean_ids_master
-
-  # -----------------------------------------------------------------------
-  # 3. Apply PC (SVD) Rotation for FAST Indices
-  # -----------------------------------------------------------------------
   Lambda_rot <- Lambda_raw
   F_rot <- F_raw
-  V <- diag(k) # Default to identity matrix for k=1
+  V <- diag(k)
 
   if (k > 1) {
     svd_res <- svd(Lambda_raw)
@@ -153,7 +140,6 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
     F_rot <- F_raw %*% V
   }
 
-  # Apply "mean" rotation: Ensure rotated Factor 1 represents positive Overall Performance
   if (mean(Lambda_rot[, 1]) < 0) {
     Lambda_rot[, 1] <- -Lambda_rot[, 1]
     F_rot[, 1] <- -F_rot[, 1]
@@ -161,54 +147,34 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
   }
 
   mean_load_rot <- colMeans(Lambda_rot)
-
-  # -----------------------------------------------------------------------
-  # 4. Calculate OP (Factor 1) and Stability (Factors 2:k)
-  # -----------------------------------------------------------------------
-  # OP is the Rotated Factor 1 scaled by the mean rotated loading
   OP <- F_rot[, 1] * mean_load_rot[1]
   Var_A_OP <- mean_load_rot[1]^2
-
-  # Calculate PEV of the rotated Factor 1 OP using the SVD rotation weights
-  # Var(V[1,1]*f_1 + V[2,1]*f_2 ...) = sum( V[j,1]^2 * PEV(f_j) )
   PEV_F1_rot <- rowSums(PEV_raw * (matrix(V[, 1]^2, nrow = nrow(PEV_raw), ncol = k, byrow = TRUE)))
   PEV_OP <- PEV_F1_rot * Var_A_OP
 
   blups_gs <- data.frame(
-    id = clean_ids_master,
-    GEBV_OP = OP,
-    PEV_OP = PEV_OP,
-    Reliability = 1 - (PEV_OP / Var_A_OP),
-    Stability_RMSD = 0,
-    stringsAsFactors = FALSE
+    id = clean_ids_master, GEBV_OP = OP,
+    PEV_OP = PEV_OP, Reliability = 1 - (PEV_OP / Var_A_OP),
+    Stability_RMSD = 0, stringsAsFactors = FALSE
   )
+
   blups_gs$Reliability <- ifelse(blups_gs$Reliability < 0, 0, blups_gs$Reliability)
 
-  # Calculate RMSD for Stability from Rotated Factors 2:k
   if (k > 1) {
     cli::cli_alert_info("Calculating crossover Stability (RMSD) from rotated higher-order factors...")
-
     L_int <- Lambda_rot[, 2:k, drop = FALSE]
     F_int <- F_rot[, 2:k, drop = FALSE]
-
-    # Interaction matrix for all genotypes across environments
     I_mat <- F_int %*% t(L_int)
-
-    # RMSD is the Root Mean Square Deviation of these specific interactions
     blups_gs$Stability_RMSD <- sqrt(rowMeans(I_mat^2))
   }
 
-  # -----------------------------------------------------------------------
-  # 5. Assign Genomic Selection Status
-  # -----------------------------------------------------------------------
   target_ids <- as.character(target_ids)
   training_ids <- as.character(training_ids)
-
   blups_gs$status <- NA_character_
   blups_gs$status[blups_gs$id %in% training_ids] <- "Training"
   blups_gs$status[blups_gs$id %in% target_ids] <- "Target"
-
   missing_targets <- setdiff(target_ids, blups_gs$id)
+
   if (length(missing_targets) > 0) {
     cli::cli_alert_warning("Found {length(missing_targets)} target IDs missing from the model predictions.")
     if (!is.null(g_inv)) {
@@ -228,11 +194,11 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
   }
 
   blups_assigned <- blups_gs[!is.na(blups_gs$status), ]
+
   if (nrow(blups_assigned[blups_assigned$status == "Target", ]) == 0) {
     cli::cli_abort("No target IDs were matched in the model predictions.")
   }
 
-  # Rank targets by Smith-Cullis Index (OP - RMSD) if k > 1, else just OP
   if (k > 1) {
     blups_assigned$Selection_Index <- blups_assigned$GEBV_OP - blups_assigned$Stability_RMSD
   } else {
@@ -242,15 +208,14 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
   blups_target <- blups_assigned[blups_assigned$status == "Target", ]
   blups_target <- blups_target[order(blups_target$Selection_Index, decreasing = TRUE), ]
 
-  # Diagnostics
   mean_rel_tr <- mean(blups_assigned$Reliability[blups_assigned$status == "Training"], na.rm = TRUE)
   mean_rel_ta <- mean(blups_target$Reliability, na.rm = TRUE)
 
   cli::cli_h2("Genomic Selection Diagnostics")
   cli::cli_text("Mean OP Reliability (Training): {.val {round(mean_rel_tr, 3)}}")
   cli::cli_text("Mean OP Reliability (Target)  : {.val {round(mean_rel_ta, 3)}}")
-
   cli::cli_text("Top 5 Candidates for Advancement:")
+
   if (k > 1) {
     print(head(blups_target[, c("id", "GEBV_OP", "Stability_RMSD", "Selection_Index", "Reliability")], 5))
   } else {
@@ -263,12 +228,8 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
     cli::cli_alert_success("Saved target BLUPs to {.file {csv_file}}")
   }
 
-  # -----------------------------------------------------------------------
-  # 6. Visualization Suite
-  # -----------------------------------------------------------------------
   cli::cli_alert_info("Generating enhanced diagnostic plots...")
   blups_assigned$status <- factor(blups_assigned$status, levels = c("Training", "Target"))
-
   mean_train <- mean(blups_assigned$GEBV_OP[blups_assigned$status == "Training"], na.rm = TRUE)
   mean_target <- mean(blups_assigned$GEBV_OP[blups_assigned$status == "Target"], na.rm = TRUE)
 
@@ -279,91 +240,62 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
     blups_assigned <- merge(blups_assigned, rel_df, by = "id", all.x = TRUE)
   }
 
-  # Plot A: GEBV Distribution
   plot_A <- ggplot(blups_assigned, aes(x = .data$GEBV_OP, fill = .data$status)) +
     geom_density(alpha = 0.6, color = "black", linewidth = 0.3) +
-    scale_fill_manual(values = c("Training" = "#56B4E9", "Target" = "#E69F00")) +
+    scale_fill_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
     geom_vline(xintercept = mean_train, linetype = "dashed", color = "#56B4E9", linewidth = 1) +
     geom_vline(xintercept = mean_target, linetype = "dashed", color = "#E69F00", linewidth = 1) +
-    labs(
-      title = "A. Distribution of Overall Performance (OP)",
-      x = "Genomic Estimated Breeding Value (Rotated Factor 1)", y = "Density", fill = "Cohort"
-    ) +
+    labs(title = "A. Distribution of Overall Performance (OP)", x = "Genomic Estimated Breeding Value (Rotated Factor 1)", y = "Density", fill = "Cohort") +
     theme_classic(base_size = 12) +
     theme(legend.position = "top")
 
-  # Plot B & C depend on k
   top_cutoff <- quantile(blups_assigned$GEBV_OP[blups_assigned$status == "Target"], top_pct, na.rm = TRUE)
-  top_candidates <- head(blups_target, 5) # For labeling
+  top_candidates <- head(blups_target, 5)
 
   if (k > 1) {
     plot_B <- ggplot(blups_assigned, aes(x = .data$status, y = .data$Stability_RMSD, fill = .data$status)) +
       geom_violin(alpha = 0.6, trim = FALSE) +
       geom_boxplot(width = 0.2, fill = "white", color = "black", alpha = 0.8) +
-      scale_fill_manual(values = c("Training" = "#56B4E9", "Target" = "#E69F00")) +
-      labs(
-        title = paste("B. Stability (RMSD of Factors 2 to", k, ")"),
-        x = "Cohort", y = "RMSD (Lower = More Stable)"
-      ) +
+      scale_fill_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
+      labs(title = paste("B. Stability (RMSD of Factors 2 to", k, ")"), x = "Cohort", y = "RMSD (Lower = More Stable)") +
       theme_classic(base_size = 12) +
       theme(legend.position = "none")
 
     plot_C <- ggplot(blups_assigned, aes(x = .data$Stability_RMSD, y = .data$GEBV_OP)) +
       geom_point(aes(color = .data$status), alpha = 0.7, size = 2.5, stroke = 0) +
-      scale_color_manual(values = c("Training" = "#56B4E9", "Target" = "#E69F00")) +
+      scale_color_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
       geom_hline(yintercept = top_cutoff, linetype = "dotted", color = "black", linewidth = 1) +
-      ggrepel::geom_label_repel(
-        data = top_candidates, aes(label = .data$id),
-        size = 3, fontface = "bold", box.padding = 0.5,
-        point.padding = 0.3, segment.color = "grey50", max.overlaps = Inf
-      ) +
-      labs(
-        title = "C. Breeder's Selection Space",
-        x = "Crossover GxE (Stability RMSD)", y = "Genomic Merit (GEBV_OP)", color = "Cohort"
-      ) +
+      ggrepel::geom_label_repel(data = top_candidates, aes(label = .data$id), size = 3, fontface = "bold", box.padding = 0.5, point.padding = 0.3, segment.color = "grey50", max.overlaps = Inf) +
+      labs(title = "C. Breeder's Selection Space", x = "Crossover GxE (Stability RMSD)", y = "Genomic Merit (GEBV_OP)", color = "Cohort") +
       theme_classic(base_size = 12) +
       theme(legend.position = "none")
   } else {
     plot_B <- ggplot(blups_assigned, aes(x = .data$status, y = .data$Reliability, fill = .data$status)) +
       geom_violin(alpha = 0.6, trim = FALSE) +
       geom_boxplot(width = 0.2, fill = "white", color = "black", alpha = 0.8) +
-      scale_fill_manual(values = c("Training" = "#56B4E9", "Target" = "#E69F00")) +
-      labs(
-        title = "B. Prediction Reliability",
-        x = "Cohort", y = "Reliability (Accuracy²)"
-      ) +
+      scale_fill_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
+      labs(title = "B. Prediction Reliability", x = "Cohort", y = "Reliability (Accuracy²)") +
       theme_classic(base_size = 12) +
       theme(legend.position = "none")
 
     plot_C <- ggplot(blups_assigned, aes(x = .data$Reliability, y = .data$GEBV_OP)) +
       geom_point(aes(color = .data$status), alpha = 0.7, size = 2.5, stroke = 0) +
-      scale_color_manual(values = c("Training" = "#56B4E9", "Target" = "#E69F00")) +
+      scale_color_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
       geom_hline(yintercept = top_cutoff, linetype = "dotted", color = "black", linewidth = 1) +
-      ggrepel::geom_label_repel(
-        data = top_candidates, aes(label = .data$id),
-        size = 3, fontface = "bold", box.padding = 0.5,
-        point.padding = 0.3, segment.color = "grey50", max.overlaps = Inf
-      ) +
-      labs(
-        title = "C. Breeder's Selection Space",
-        x = "Prediction Reliability", y = "Genomic Merit (GEBV_OP)", color = "Cohort"
-      ) +
+      ggrepel::geom_label_repel(data = top_candidates, aes(label = .data$id), size = 3, fontface = "bold", box.padding = 0.5, point.padding = 0.3, segment.color = "grey50", max.overlaps = Inf) +
+      labs(title = "C. Breeder's Selection Space", x = "Prediction Reliability", y = "Genomic Merit (GEBV_OP)", color = "Cohort") +
       theme_classic(base_size = 12) +
       theme(legend.position = "none")
   }
 
-  # Plot D: Relatedness vs Reliability (if GRM is provided)
   has_plot_D <- FALSE
   if ("Relatedness" %in% names(blups_assigned)) {
     has_plot_D <- TRUE
     plot_D <- ggplot(blups_assigned, aes(x = .data$Relatedness, y = .data$Reliability, color = .data$status)) +
       geom_point(alpha = 0.7, size = 2) +
       geom_smooth(method = "lm", se = FALSE) +
-      scale_color_manual(values = c("Training" = "#56B4E9", "Target" = "#E69F00")) +
-      labs(
-        title = "D. Relatedness vs Reliability",
-        x = "Genetic Relatedness (Mean GRM)", y = "Prediction Reliability"
-      ) +
+      scale_color_manual(values = c(Training = "#56B4E9", Target = "#E69F00")) +
+      labs(title = "D. Relatedness vs Reliability", x = "Genetic Relatedness (Mean GRM)", y = "Prediction Reliability") +
       theme_classic(base_size = 12) +
       theme(legend.position = "none")
   }
@@ -384,18 +316,11 @@ evaluate_gs_predictions <- function(model, target_ids, training_ids, target_term
 
   if (save_output) {
     pdf_file <- paste0(output_prefix, "_Figure.pdf")
-    ggsave(
-      filename = pdf_file, plot = combined_figure, device = "pdf",
-      width = 11, height = 9, dpi = 600
-    )
+    ggsave(filename = pdf_file, plot = combined_figure, device = "pdf", width = 11, height = 9, dpi = 600)
     cli::cli_alert_success("Saved enhanced manuscript figure to {.file {pdf_file}}")
   }
 
-  res <- list(
-    blups = blups_assigned,
-    missing_targets = missing_targets,
-    plots = combined_figure
-  )
+  res <- list(blups = blups_assigned, missing_targets = missing_targets, plots = combined_figure)
   class(res) <- c("gs_predictions", "list")
   return(res)
 }
