@@ -224,8 +224,8 @@ evaluate_gs_predictions <- function(
 
   if (save_output) {
     csv_file <- paste0(output_prefix, "_BLUPS.csv")
-    write.csv(blups_target, csv_file, row.names = FALSE)
-    cli::cli_alert_success("Saved target BLUPs to {.file {csv_file}}")
+    write.csv(blups_assigned, csv_file, row.names = FALSE)
+    cli::cli_alert_success("Saved training and target BLUPs to {.file {csv_file}}")
   }
 
   cli::cli_alert_info("Generating enhanced diagnostic plots...")

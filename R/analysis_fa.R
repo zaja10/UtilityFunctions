@@ -141,9 +141,17 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
     }
     psi_df <- data.frame(Group = target_sites, Psi = psi_vals)
 
-    # Scores
-    coefs <- coef(model)$random
-    coef_names <- rownames(coefs)
+    # Scores and Standard Errors
+    summ_coef <- tryCatch(
+        summary(model, coef = TRUE)$coef.random,
+        error = function(e) NULL
+    )
+    if (is.null(summ_coef)) {
+        cli::cli_warn("Could not extract random coefficients with SEs. Using standard coef(). PEV will not be available.")
+        summ_coef <- as.matrix(coef(model)$random)
+    }
+    
+    coef_names <- rownames(summ_coef)
 
     # NEW: Filter coef_names using classify to prevent mixing multiple FA terms
     if (!is.null(classify)) {
@@ -158,28 +166,35 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
             coef_idx <- grep(base_var, coef_names, ignore.case = TRUE)
             if (length(coef_idx) > 0) {
                 coef_names <- coef_names[coef_idx]
-                if (is.matrix(coefs) || is.data.frame(coefs)) {
-                    coefs <- coefs[coef_idx, , drop = FALSE]
-                } else {
-                    coefs <- coefs[coef_idx]
-                }
+                summ_coef <- summ_coef[coef_idx, , drop = FALSE]
             }
         }
     }
 
     scores_list <- vector("list", k)
+    pev_list <- vector("list", k)
     gen_col_name <- "Genotype"
+
+    sol_col <- grep("solution|value", colnames(summ_coef), ignore.case = TRUE, value = TRUE)[1]
+    se_col <- grep("std", colnames(summ_coef), ignore.case = TRUE, value = TRUE)[1]
+    if (is.na(sol_col)) sol_col <- 1
 
     for (i in 1:k) {
         pat <- paste0("(Comp|Fac|fa|rr)[_]?", i, ".*")
         rows <- grep(pat, coef_names, ignore.case = TRUE)
         if (length(rows) > 0) {
             matches <- coef_names[rows]
-            vals <- if (is.matrix(coefs) || is.data.frame(coefs)) coefs[rows, 1] else coefs[rows]
+            vals <- as.numeric(summ_coef[rows, sol_col])
+            
             clean_ids <- sub(paste0(".*", "(Comp|Fac|fa|rr)[_]?", i, "(_|:)?"), "", matches)
             clean_ids <- sub("^:", "", clean_ids)
             clean_ids <- sub("vm\\([^)]+\\)_?", "", clean_ids) # Clean vm() wrapper
             scores_list[[i]] <- data.frame(Genotype = clean_ids, Value = vals, Factor = i)
+            
+            if (!is.na(se_col)) {
+                se_vals <- as.numeric(summ_coef[rows, se_col])
+                pev_list[[i]] <- data.frame(Genotype = clean_ids, Value = se_vals^2, Factor = i)
+            }
         }
     }
     scores_df <- do.call(rbind, scores_list)
@@ -192,9 +207,19 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
         f_mat <- cbind(f_mat, pad)
     }
 
+    pev_df <- do.call(rbind, pev_list)
+    has_pev <- !is.null(pev_df) && nrow(pev_df) > 0
+    pev_mat <- if (has_pev) xtabs(Value ~ Genotype + Factor, data = pev_df) else NULL
+    if (!is.null(pev_mat)) class(pev_mat) <- "matrix"
+    if (has_pev && ncol(pev_mat) < k) {
+        pad <- matrix(0, nrow(pev_mat), k - ncol(pev_mat))
+        pev_mat <- cbind(pev_mat, pad)
+    }
+
     # 3. Rotation Logic ---------------------------------------------------------
     lambda_rot <- lambda_mat
     f_rot <- f_mat
+    pev_rot <- pev_mat
     var_exp <- rep(NA, k)
 
     if (rotate != "none" && nrow(lambda_mat) > 1 && ncol(lambda_mat) > 0) {
@@ -202,6 +227,7 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
         V <- svd_res$v
         lambda_pca <- lambda_mat %*% V
         f_pca <- if (has_scores) f_mat %*% V else NULL
+        pev_pca <- if (has_pev) pev_mat %*% (V^2) else NULL
 
         if (rotate == "mean" && k >= 1) {
             if (sum(lambda_pca[, 1]) < 0) {
@@ -211,9 +237,11 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
             }
             lambda_rot <- lambda_pca
             f_rot <- f_pca
+            pev_rot <- pev_pca
         } else {
             lambda_rot <- lambda_pca
             f_rot <- f_pca
+            pev_rot <- pev_pca
         }
 
         tot_var <- sum(lambda_rot^2) 
@@ -223,6 +251,7 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
 
     colnames(lambda_rot) <- paste0("Fac", 1:ncol(lambda_rot))
     if (has_scores) colnames(f_rot) <- paste0("Fac", 1:ncol(f_rot))
+    if (has_pev) colnames(pev_rot) <- paste0("Fac", 1:ncol(pev_rot))
 
     # 4. Reconstruct & VAF ------------------------------------------------------
     G_est <- (lambda_rot %*% t(lambda_rot)) + diag(psi_df$Psi)
@@ -241,7 +270,7 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
     vaf_df$Total_VAF <- round(total_vaf, 2)
 
     # 5. FAST Indices Call ------------------------------------------------------
-    temp_res <- list(loadings = list(rotated = lambda_rot), scores = list(rotated = f_rot))
+    temp_res <- list(loadings = list(rotated = lambda_rot), scores = list(rotated = f_rot, pev_rotated = pev_rot))
     fast_df <- NULL
     if (has_scores) {
         fast_df <- calculate_fast_indices(temp_res, k = k)
@@ -249,7 +278,7 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
 
     res <- list(
         loadings = list(raw = lambda_mat, rotated = lambda_rot),
-        scores = list(raw = f_mat, rotated = f_rot),
+        scores = list(raw = f_mat, rotated = f_rot, pev_raw = pev_mat, pev_rotated = pev_rot),
         var_comp = list(psi = psi_df, vaf = vaf_df),
         matrices = list(G = G_est, Cor = C_est),
         fast = fast_df,
@@ -269,17 +298,18 @@ fa.asreml <- function(model, classify = NULL, psi_term = NULL, rotate = "mean", 
     return(res)
 }
 
-#' Calculate FAST Indices (OP and RMSD)
+#' Calculate FAST Indices (OP, RMSD, PEV, Reliability)
 #'
 #' Calculates "Factor Analytic Selection Tools" indices from a FA Model.
 #'
 #' @param fa_object An object of class `fa_model` or a list with `loadings` and `scores`.
 #' @param k Number of factors.
-#' @return A dataframe with Genotype, OP, and RMSD.
+#' @return A dataframe with Genotype, OP, PEV_OP, Reliability, and RMSD.
 #' @export
 calculate_fast_indices <- function(fa_object, k = NULL) {
     L <- fa_object$loadings$rotated
     F_sc <- fa_object$scores$rotated
+    PEV_rot <- fa_object$scores$pev_rotated
 
     if (is.null(L) || is.null(F_sc)) {
         return(NULL)
@@ -290,6 +320,18 @@ calculate_fast_indices <- function(fa_object, k = NULL) {
     mean_load_1 <- mean(L[, 1])
     op <- F_sc[, 1] * mean_load_1
 
+    df <- data.frame(Genotype = rownames(F_sc), OP = op)
+
+    # PEV and Reliability for OP
+    if (!is.null(PEV_rot)) {
+        pev_op <- PEV_rot[, 1] * (mean_load_1^2)
+        var_a_op <- mean_load_1^2
+        rel <- 1 - (pev_op / var_a_op)
+        rel <- ifelse(rel < 0, 0, rel)
+        df$PEV_OP <- pev_op
+        df$Reliability <- rel
+    }
+
     # RMSD (Stability)
     rmsd <- rep(0, nrow(F_sc))
 
@@ -299,8 +341,8 @@ calculate_fast_indices <- function(fa_object, k = NULL) {
         I_mat <- F_int %*% t(L_int)
         rmsd <- sqrt(rowMeans(I_mat^2))
     }
+    df$RMSD <- rmsd
 
-    df <- data.frame(Genotype = rownames(F_sc), OP = op, RMSD = rmsd)
     df <- df[order(df$OP, decreasing = TRUE), ]
     return(df)
 }
