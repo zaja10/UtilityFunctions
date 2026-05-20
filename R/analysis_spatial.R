@@ -1,172 +1,97 @@
-#' Fit and Compare Spatial ASReml Models
-#'
-#' Fits a list of ASReml models and returns a comparison dataframe sorted by AIC.
-#'
-#' @param model_list A named list. Each element must be a list containing `fixed`, `random`, and `residual` formula objects.
-#' @param data A dataframe containing the trial data.
-#' @return A dataframe comparing the models (Model, AIC, LogLik, Converged), sorted by AIC.
-#' @importFrom stats as.formula
+#' @title Fit and Compare Spatial Models
+#' @description Fits a specified asreml spatial model and returns its AIC, LogLikelihood, and convergence status.
+#' @param fixed_f Formula for fixed effects
+#' @param random_f Formula for random effects
+#' @param residual_f Formula for residual effects
+#' @param model_name Character string for the model name
+#' @param df Dataframe containing the trial data
+#' @return A dataframe containing Model name, AIC, LogLik, and Converged status
+#' @importFrom asreml asreml na.method
+#' @importFrom stats as.formula update terms
 #' @export
-compare_spatial_models <- function(model_list, data) {
-  check_asreml_availability()
-  
-  # Ensure mkConv is available
-  if (!exists("mkConv", mode = "function")) {
-    stop("mkConv helper function is required but not found.")
-  }
-
-  results <- purrr::imap_dfr(model_list, function(params, model_name) {
-    tryCatch({
-      # Dynamically evaluate the formulas within the package environment
-      m <- asreml::asreml(
-        fixed = params$fixed,
-        random = params$random,
-        residual = params$residual,
-        data = data,
-        trace = FALSE,
-        maxiter = 50,
-        na.action = asreml::na.method(y = "include", x = "include")
-      )
-      
-      if (!m$converge) {
-        m <- mkConv(m)
-      }
-      
-      aic_val <- summary(m)$aic
-      
-      data.frame(
-        Model = model_name,
-        AIC = aic_val,
-        LogLik = m$loglik,
-        Converged = m$converge,
-        stringsAsFactors = FALSE
-      )
-    }, error = function(e) {
-      data.frame(
-        Model = model_name,
-        AIC = Inf,
-        LogLik = NA,
-        Converged = FALSE,
-        stringsAsFactors = FALSE
-      )
-    })
+fit_asreml_comparison <- function(fixed_f, random_f, residual_f, model_name, df) {
+  tryCatch({
+    m <- asreml::asreml(
+      fixed = fixed_f, 
+      random = random_f, 
+      residual = residual_f, 
+      data = df, 
+      trace = FALSE, 
+      maxiter = 50, 
+      na.action = asreml::na.method(y = "include", x = "include")
+    )
+    if (!m$converge) m <- mkConv(m)
+    
+    aic_val  <- summary(m)$aic
+    data.frame(
+      Model = model_name, 
+      AIC = aic_val, 
+      LogLik = m$loglik, 
+      Converged = m$converge, 
+      stringsAsFactors = FALSE
+    )
+  }, error = function(e) {
+    data.frame(Model = model_name, AIC = Inf, LogLik = NA, Converged = FALSE)
   })
-  
-  results <- results[order(results$AIC), ]
-  return(results)
 }
 
-#' Extract Variance Components and Key Metrics
-#'
-#' Extracts genetic, environmental, and spatial variances from an ASReml model,
-#' and computes heritability, mean PEV, and accuracy.
-#'
-#' @param model A converged ASReml model.
-#' @param model_name Character. Name of the model (for output tracking).
-#' @param trial_name Character. Name of the trial (for output tracking).
-#' @param genotype_term Character. The exact name of the genotype term in the vparameters (e.g., "vm(Genotype, G.inv)").
-#' @param error_term Character. The term name for the residual error (e.g., "colNumber:rowNumber!R").
-#' @param spatial_term Character. The term name for the spatial error (e.g., "units"). Defaults to NULL.
-#' @return A one-row dataframe with the extracted metrics.
+#' @title Run Final Best Model and Extract Metrics
+#' @description Runs the best selected spatial model and extracts key quantitative genetics metrics like Vg, Ve, Vr, h2, and Accuracy.
+#' @param params List containing formulas: f (fixed), r (random), res (residual)
+#' @param model_name Name of the final model
+#' @param df Dataframe containing the trial data
+#' @param trial_name Name of the trial being analyzed
+#' @param grm Genomic relationship matrix inverse
+#' @return A dataframe of extracted variance components and metrics
+#' @importFrom asreml asreml na.method
+#' @importFrom stats predict terms
 #' @export
-extract_variance_components <- function(model, model_name = "Model", trial_name = "Trial", 
-                                        genotype_term = NULL, error_term = NULL, spatial_term = NULL) {
+run_final_analysis <- function(params, model_name, df, trial_name, grm) {
+  m_final <- asreml::asreml(
+    fixed = params$f, 
+    random = params$r, 
+    residual = params$res, 
+    data = df, 
+    trace = FALSE, 
+    maxiter = 50, 
+    na.action = asreml::na.method(y = "include", x = "include")
+  )
+  if (!m_final$converge) m_final <- mkConv(m_final)
   
-  check_asreml_availability()
+  vars <- m_final$sigma2 * m_final$vparameters
   
-  if (!inherits(model, "asreml")) stop("Input must be an asreml object.")
+  Vg <- vars[grep("vm\\(gkeep", names(vars))]
+  if (length(Vg) == 0) Vg <- NA 
   
-  vars <- model$sigma2 * model$vparameters
-  
-  # Extract Genetic Variance
-  Vg <- NA
-  if (!is.null(genotype_term)) {
-    match_idx <- grep(genotype_term, names(vars), fixed = TRUE)
-    if (length(match_idx) > 0) Vg <- vars[match_idx[1]]
-  }
-  
-  # Extract Error Variance
-  Ve <- NA
-  if (!is.null(error_term)) {
-    match_idx <- grep(error_term, names(vars), fixed = TRUE)
-    if (length(match_idx) > 0) Ve <- vars[match_idx[1]]
-  }
-  
-  # Extract Spatial Variance (e.g., units)
-  Vr <- 0
-  if (!is.null(spatial_term)) {
-    match_idx <- grep(spatial_term, names(vars), fixed = TRUE)
-    if (length(match_idx) > 0) Vr <- vars[match_idx[1]]
-  }
+  Ve <- vars[grep("colNumber:rowNumber!R", names(vars))]
+  Vr <- if (grepl("AxAe", model_name)) vars[grep("units", names(vars))] else 0
   
   Vtotal <- Ve + Vr
-  h2 <- if (!is.na(Vg) && !is.na(Vtotal)) Vg / (Vg + Vtotal / 2) else NA
+  h2 <- if(!is.na(Vg)) Vg / (Vg + Vtotal/2) else NA
   
-  # Extract PEV and SED if classification is possible
   mean_pev <- NA; avsed <- NA; GH_c <- NA; Acc <- NA
-  
-  if (!is.na(Vg) && !is.null(genotype_term)) {
-    tryCatch({
-      # Parse classify term from the genotype term string 
-      # e.g. "vm(Genotype, G.inv)" -> "Genotype"
-      classify_str <- gsub("vm\\(([^,]+),.*\\)", "\\1", genotype_term)
-      
-      pred <- predict(model, classify = classify_str, only = genotype_term, vcov = TRUE, sed = TRUE)
-      mean_pev <- mean(diag(pred$vcov))
-      avsed <- pred$avsed[2]^2 / 2
-      GH_c <- (1 - avsed / Vg)
-      if (GH_c > 0) Acc <- sqrt(GH_c)
-    }, error = function(e) {
-      # Ignore prediction errors silently
-    })
-  }
+  tryCatch({
+    fixed_terms <- attr(stats::terms(params$f), "term.labels")
+    terms_to_ignore <- fixed_terms[grepl("lin\\(|spl\\(", fixed_terms)]
+    
+    if (length(terms_to_ignore) > 0) {
+      pred <- stats::predict(m_final, classify = "gkeep", only = "vm(gkeep, grm)", 
+                      ignore = terms_to_ignore, vcov = TRUE, sed = TRUE)
+    } else {
+      pred <- stats::predict(m_final, classify = "gkeep", only = "vm(gkeep, grm)", 
+                      vcov = TRUE, sed = TRUE)
+    }
+    
+    mean_pev <- mean(diag(pred$vcov))
+    avsed <- pred$avsed[2]^2 / 2
+    GH_c <- if(!is.na(Vg)) (1 - avsed / Vg) else NA
+    Acc <- if(!is.na(GH_c) && GH_c > 0) sqrt(GH_c) else NA
+  }, error = function(e) {
+  })
   
   return(data.frame(
-    Trial = trial_name, 
-    Model = model_name, 
-    Vg = Vg, 
-    Ve = Ve, 
-    Vr = Vr, 
-    h2 = h2, 
-    PEV = mean_pev, 
-    SED = avsed, 
-    GH_c = GH_c, 
-    Acc = Acc, 
-    LogLik = model$loglik, 
-    stringsAsFactors = FALSE
+    Trial = trial_name, Model = model_name, rG = NA, rE = NA, rR = NA, 
+    Vg = Vg, Ve = Ve, Vr = Vr, h2 = h2, PEV = mean_pev, SED = avsed, 
+    GH_c = GH_c, Acc = Acc, LogLik = m_final$loglik, stringsAsFactors = FALSE
   ))
-}
-
-#' Extract Standardized Residuals and Identify Outliers
-#'
-#' Updates a fitted ASReml model to compute the Average Outlier Measure (AOM),
-#' extracts standardized conditional residuals, and filters for potential outliers.
-#'
-#' @param best_model A converged ASReml model object.
-#' @param trial_data The original dataframe used for the trial.
-#' @param threshold Numeric. Absolute value cutoff for identifying outliers (default 4).
-#' @param cols_to_keep Character vector. Column names to retain in the output summary.
-#' @return A dataframe containing only the flagged outliers and their residuals (`scres`).
-#' @export
-extract_asreml_outliers <- function(best_model, trial_data, threshold = 4, cols_to_keep = NULL) {
-  check_asreml_availability()
-  
-  # Update model to compute outlier statistics
-  out.fm <- suppressWarnings(update(best_model, aom = TRUE))
-  
-  trial_data$scres <- NA
-  
-  # Map residuals back using valid row indices
-  valid_rows <- as.numeric(rownames(out.fm$mf))
-  trial_data$scres[valid_rows] <- out.fm$aom$R[, 2]
-  
-  # Filter outliers
-  outliers <- trial_data[!is.na(trial_data$scres) & abs(trial_data$scres) > threshold, ]
-  
-  if (nrow(outliers) > 0 && !is.null(cols_to_keep)) {
-    cols_to_keep <- intersect(cols_to_keep, names(outliers))
-    outliers <- subset(outliers, select = c(cols_to_keep, "scres"))
-  }
-  
-  return(outliers)
 }

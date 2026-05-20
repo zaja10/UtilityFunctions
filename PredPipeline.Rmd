@@ -1,0 +1,849 @@
+---
+title: "GPred_Pipeline"
+output: html_notebook
+---
+
+dataset consists of multiple trials and traits measured for a wheat breeding program
+
+# Packages
+```{r include=FALSE}
+##asreml for REML analysis
+require(asreml)
+# require(lmmtools)
+##ggplot2 for plotting
+require(ggplot2)
+##ASExtras4 for additional output from asreml
+require(ASExtras4)
+##lattice for heatmaps
+require(lattice)
+##tidyr for simple dataframe manipulation
+require(tidyverse)
+require(here)
+##writexl for export of results to xlsx file
+require(writexl)
+
+asreml.options(workspace = "32gb", pworkspace = "16gb")
+
+# --- Helper Functions ---
+
+# Function to safely ensure ASReml model convergence
+mkConv <- function(mod) {
+  pctchg <- summary(mod)$varcomp[, c('%ch')]
+  tries <- 1
+  while(any(pctchg > 1, na.rm = TRUE) & tries < 20) {
+    tries <- tries + 1
+    mod <- suppressWarnings(update(mod))
+    pctchg <- summary(mod)$varcomp[, c('%ch')]
+  }
+  return(mod)
+}
+
+# Function to fit and compare spatial models
+fit_asreml_comparison <- function(fixed_f, random_f, residual_f, model_name, df) {
+  tryCatch({
+    m <- asreml(
+      fixed = fixed_f, 
+      random = random_f, 
+      residual = residual_f, 
+      data = df, 
+      trace = FALSE, 
+      maxiter = 50, 
+      na.action = na.method(y = "include", x = "include")
+    )
+    if (!m$converge) m <- mkConv(m) # Using your custom convergence function
+    
+    aic_val  <- summary(m)$aic
+    data.frame(
+      Model = model_name, 
+      AIC = aic_val, 
+      LogLik = m$loglik, 
+      Converged = m$converge, 
+      stringsAsFactors = FALSE
+    )
+  }, error = function(e) {
+    data.frame(Model = model_name, AIC = Inf, LogLik = NA, Converged = FALSE)
+  })
+}
+
+# Function to run the final best model and extract metrics
+# Function to run the final best model and extract metrics
+run_final_analysis <- function(params, model_name, df, trial_name) {
+  m_final <- asreml(
+    fixed = params$f, 
+    random = params$r, 
+    residual = params$res, 
+    data = df, 
+    trace = FALSE, 
+    maxiter = 50, 
+    na.action = na.method(y = "include", x = "include")
+  )
+  if (!m_final$converge) m_final <- mkConv(m_final)
+  
+  vars <- m_final$sigma2 * m_final$vparameters
+  
+  # Extract Genetic Variance from the gkeep term
+  Vg <- vars[grep("vm\\(gkeep", names(vars))]
+  if (length(Vg) == 0) Vg <- NA 
+  
+  # Extract Error and Spatial Variances
+  Ve <- vars[grep("colNumber:rowNumber!R", names(vars))]
+  Vr <- if (grepl("AxAe", model_name)) vars[grep("units", names(vars))] else 0
+  
+  Vtotal <- Ve + Vr
+  h2 <- if(!is.na(Vg)) Vg / (Vg + Vtotal/2) else NA
+  
+  tryCatch({
+    # NEW: Dynamically extract fixed terms to ignore in predict
+    fixed_terms <- attr(terms(params$f), "term.labels")
+    # Identify any terms containing "lin(" or "spl("
+    terms_to_ignore <- fixed_terms[grepl("lin\\(|spl\\(", fixed_terms)]
+    
+    # Predict using the gkeep column, passing ignored terms if they exist
+    if (length(terms_to_ignore) > 0) {
+      pred <- predict(m_final, classify = "gkeep", only = "vm(gkeep, G.inv)", 
+                      ignore = terms_to_ignore, vcov = TRUE, sed = TRUE)
+    } else {
+      pred <- predict(m_final, classify = "gkeep", only = "vm(gkeep, G.inv)", 
+                      vcov = TRUE, sed = TRUE)
+    }
+    
+    mean_pev <- mean(diag(pred$vcov))
+    avsed <- pred$avsed[2]^2 / 2
+    GH_c <- if(!is.na(Vg)) (1 - avsed / Vg) else NA
+    Acc <- if(!is.na(GH_c) && GH_c > 0) sqrt(GH_c) else NA
+  }, error = function(e) {
+    mean_pev <<- NA; avsed <<- NA; GH_c <<- NA; Acc <<- NA
+  })
+  
+  return(data.frame(
+    Trial = trial_name, Model = model_name, rG = NA, rE = NA, rR = NA, 
+    Vg = Vg, Ve = Ve, Vr = Vr, h2 = h2, PEV = mean_pev, SED = avsed, 
+    GH_c = GH_c, Acc = Acc, LogLik = m_final$loglik, stringsAsFactors = FALSE
+  ))
+}
+
+
+#' Extract Standardized Residuals and Identify Outliers
+#'
+#' This function updates a fitted asreml model to calculate the Average Outlier 
+#' Measure (AOM), extracts the standardized conditional residuals, and filters 
+#' for potential outliers based on a defined threshold.
+#'
+#' @param best_model A converged asreml model object
+#' @param trial_data The original dataframe used for the trial
+#' @param threshold Numeric value defining the outlier cutoff (default is 4)
+#' @return A dataframe containing only the flagged outliers
+extract_asreml_outliers <- function(best_model, trial_data, threshold = 4) {
+  
+  # 1. Update the model to compute outlier statistics
+  # suppressWarnings is used to keep the console clean from minor update messages
+  out.fm <- suppressWarnings(update.asreml(best_model, aom = TRUE))
+  
+  # 2. Initialize a new column for the residuals
+  trial_data$scres <- NA
+  
+  # 3. Safely map residuals back to the dataframe
+  # ASReml's working dataframe (out.fm$mf) only contains rows without missing target values.
+  # We extract the row indices of the working data to place the residuals correctly.
+  valid_rows <- as.numeric(rownames(out.fm$mf))
+  
+  # Extract the standardized conditional residuals (column 2 of the AOM R matrix)
+  trial_data$scres[valid_rows] <- out.fm$aom$R[, 2]
+  
+  # 4. Filter the dataframe for true outliers using absolute value
+  outliers <- trial_data[!is.na(trial_data$scres) & abs(trial_data$scres) > threshold, ]
+  
+  # 5. Keep only the most relevant columns to make the review easy
+  outliers_clean <- subset(outliers, select = c(studyName, colNumber, rowNumber, 
+                                                replicate, germplasmName, 
+                                                grain_yield, scres))
+  
+  return(outliers_clean)
+}
+```
+
+# load df
+```{r}
+## Read in data
+YT.df<- read.csv("data/YIELDTRIALS.2026-05-08T142653phenotype_download.csv")
+
+## Examine data
+str(YT.df)
+
+## Handle -9 to NA
+YT.df <- YT.df %>%
+  mutate(across(where(is.numeric), ~na_if(., -9)))
+
+head(YT.df)
+tail(YT.df)
+
+## Cut the fat
+YT.df <- YT.df %>% dplyr::select(studyYear, studyName, studyDesign, plantingDate, germplasmName, germplasmSynonyms, 
+                          replicate, blockNumber, plotNumber, rowNumber, colNumber,
+                          Grain.moisture.content.....CO_321.0001198,
+                          Grain.test.weight...g.L.CO_321.0001210,
+                          Grain.yield...kg.ha.CO_321.0001218,
+                          Heading.time...Julian.date..JD..CO_321.0001233,
+                          Lodging.incidence...0.9.percentage.scale.CO_321.0001282,
+                          Maturity.time...spike.estimation...Julian.date..JD..CO_321.0501101,
+                          Plant.height...cm.CO_321.0001301)
+# Key traits: TW, HT, GY
+
+## clean names
+YT.df <- YT.df %>%
+  rename(
+    grain_moisture   = Grain.moisture.content.....CO_321.0001198,
+    test_weight      = Grain.test.weight...g.L.CO_321.0001210,
+    grain_yield      = Grain.yield...kg.ha.CO_321.0001218,
+    heading_time     = Heading.time...Julian.date..JD..CO_321.0001233,
+    lodging          = Lodging.incidence...0.9.percentage.scale.CO_321.0001282,
+    maturity_time    = Maturity.time...spike.estimation...Julian.date..JD..CO_321.0501101,
+    plant_height     = Plant.height...cm.CO_321.0001301
+  )
+
+
+# Convert non-trait columns into factors
+YT.df <- YT.df %>%
+  mutate(across(
+    c(studyYear, studyName, studyDesign, plantingDate, 
+      germplasmName, germplasmSynonyms, replicate, 
+      blockNumber, plotNumber, rowNumber, colNumber), 
+    as.factor
+  ))
+
+
+## Convert yield from kg/ha to t/ha
+YT.df$grain_yield <- YT.df$grain_yield/1000
+summary(YT.df$grain_yield)
+
+```
+
+
+Get genotypes from _26 trials - prediction targets require GRM
+
+## Get test candidates
+```{r include=FALSE}
+test_candidates <- read.csv("data/PredictionTarget.csv")
+
+G.inv <- readRDS(here("Full26", "Ginv_full_26NOR.rds"))
+
+# 1. Extract the genotyped IDs from the sparse matrix attributes
+genotyped_ids <- attr(G.inv, "rowNames")
+
+# 2. Define a helper function to evaluate matches for a single row
+match_germplasm <- function(name, syn_string, valid_ids) {
+  # Convert inputs to plain characters (since they are currently factors)
+  name <- as.character(name)
+  syn_string <- as.character(syn_string)
+  
+  # Check 1: Does the primary germplasmName exist in the genomic matrix?
+  if (name %in% valid_ids) {
+    return(name)
+  }
+  
+  # Check 2: If no primary match, check the synonyms
+  if (!is.na(syn_string) && syn_string != "") {
+    # Split the string by comma and remove any accidental blank spaces
+    syn_list <- str_trim(unlist(str_split(syn_string, ",")))
+    
+    # Identify which synonyms exist in the genomic data
+    matched_syns <- syn_list[syn_list %in% valid_ids]
+    
+    # If at least one synonym matches, return the first valid one
+    if (length(matched_syns) > 0) {
+      return(matched_syns[1])
+    }
+  }
+  
+  # Return NA if absolutely nothing matches
+  return(NA_character_)
+}
+
+# 3. Apply the matching logic to your phenotypic trial dataframe
+YT.df <- YT.df %>%
+  rowwise() %>%
+  mutate(
+    # Create the gkeep column using our custom matching function
+    gkeep = match_germplasm(germplasmName, germplasmSynonyms, genotyped_ids),
+    
+    # Create the gdrop column based on the result of gkeep
+    gdrop = if_else(is.na(gkeep), as.character(germplasmName), NA_character_)
+  ) %>%
+  ungroup() # Always ungroup after rowwise operations to maintain performance later
+```
+
+# Main Loop - Univariate
+```{r}
+# Setup directories for outputs
+tables_dir <- "outputs/tables"
+if (!dir.exists(tables_dir)) dir.create(tables_dir, recursive = TRUE)
+
+# NEW: Create a dedicated directory for diagnostic plots
+diagnostics_dir <- "outputs/diagnostics"
+if (!dir.exists(diagnostics_dir)) dir.create(diagnostics_dir, recursive = TRUE)
+
+
+# Get a list of unique trials
+trial_list <- unique(as.character(YT.df$studyName))
+
+for (trial_name_str in trial_list) {
+  
+  message("\n==================================================")
+  message(paste("Processing Trial:", trial_name_str))
+  message("==================================================")
+  
+  # Define expected output files
+  selection_file <- file.path(tables_dir, paste0(trial_name_str, "_Spatial_Model_Selection.csv"))
+  metrics_file   <- file.path(tables_dir, paste0(trial_name_str, "_Final_Metrics.csv"))
+  plot_file_path <- file.path(diagnostics_dir, paste0(trial_name_str, "_Diagnostics.pdf"))
+  
+  # 1. FULL SKIP: If the diagnostics plot already exists, the trial is 100% complete
+  if (file.exists(plot_file_path)) {
+    message("  [✓] Trial fully processed (Models and Diagnostics complete). Skipping.")
+    next
+  }
+  
+  tryCatch({
+    # --- Data Preparation ---
+    trial_data <- YT.df %>% filter(studyName == trial_name_str)
+    if(nrow(trial_data) == 0) stop("No data found for this trial.")
+    
+    analysis_data <- trial_data %>%
+      mutate(Yield = as.numeric(scale(grain_yield))) %>% 
+      mutate(across(c(rowNumber, colNumber, any_of("blockNumber")), as.factor)) %>%
+      arrange(colNumber, rowNumber)
+    
+    analysis_data$gkeep <- factor(analysis_data$gkeep, levels = attr(G.inv, "rowNames"))
+    analysis_data$gdrop <- as.factor(analysis_data$gdrop)
+    
+    # --- Build Random Terms ---
+    has_blocks <- "blockNumber" %in% names(analysis_data) && n_distinct(analysis_data$blockNumber, na.rm = TRUE) > 1
+    has_ungenotyped <- sum(!is.na(analysis_data$gdrop)) > 0
+    
+    rand_terms <- c("vm(gkeep, G.inv)", "colNumber", "rowNumber")
+    if (has_ungenotyped) rand_terms <- c(rand_terms, "gdrop")
+    if (has_blocks) rand_terms <- c(rand_terms, "blockNumber")
+    
+    base_rand_str <- paste("~", paste(rand_terms, collapse = " + "))
+    
+    # Define available models
+    model_list <- list(
+      "RCD"  = list(f = Yield ~ 1, r = as.formula(base_rand_str), res = ~ colNumber:rowNumber),
+      "AxA"  = list(f = Yield ~ 1, r = as.formula(base_rand_str), res = ~ ar1(colNumber):ar1(rowNumber)),
+      "AxAe" = list(f = Yield ~ 1, r = as.formula(paste(base_rand_str, "+ units")), res = ~ ar1(colNumber):ar1(rowNumber))
+    )
+    
+    # 2. SMART BYPASS OR FULL RUN
+    if (file.exists(selection_file) && file.exists(metrics_file)) {
+      # BYPASS: Read the existing file to find the best model
+      message("  [✓] Model selection files found. Loading best model...")
+      saved_results <- read.csv(selection_file)
+      best_model_name <- saved_results$Model[1] # Assumes CSV is sorted by AIC
+      best_params <- model_list[[best_model_name]]
+      
+    } else {
+      # FULL RUN: Fit all models, compare, and save
+      message("  Fitting Univariate Spatial Models for comparison...")
+      asreml_results <- purrr::imap_dfr(model_list, ~ fit_asreml_comparison(.x$f, .x$r, .x$res, .y, analysis_data)) %>% arrange(AIC)
+      
+      best_model_name <- asreml_results$Model[1]
+      best_params <- model_list[[best_model_name]]
+      
+      univ_results <- run_final_analysis(best_params, paste0(best_model_name, "_Univ_Yield"), analysis_data, trial_name_str)
+      all_model_results <- bind_rows(univ_results %>% mutate(across(everything(), as.character)))
+      
+      write.csv(asreml_results, file = selection_file, row.names = FALSE)
+      write.csv(all_model_results, file = metrics_file, row.names = FALSE)
+      message(paste("  [✓] Model selection saved. Best Model:", best_model_name))
+    }
+    
+    # 3. FIT THE BEST MODEL FOR DIAGNOSTICS
+    message(paste("  Refitting best model (", best_model_name, ") for diagnostics..."))
+    best_m_fit <- asreml(fixed = best_params$f, random = best_params$r, 
+                         residual = best_params$res, data = analysis_data, 
+                         trace = FALSE, maxiter = 50, 
+                         na.action = na.method(y = "include", x = "include"))
+    
+    # Ensure it converged before extracting residuals
+    if (!best_m_fit$converge) best_m_fit <- mkConv(best_m_fit)
+    
+    # --- Outlier Detection & Plotting ---
+    message("  Extracting outliers and saving diagnostic plots...")
+    
+    trial_outliers <- extract_asreml_outliers(best_model = best_m_fit, 
+                                              trial_data = analysis_data, 
+                                              threshold = 4)
+    
+    if (nrow(trial_outliers) > 0) {
+      write.csv(trial_outliers, 
+                file = file.path(tables_dir, paste0(trial_name_str, "_Flagged_Outliers.csv")), 
+                row.names = FALSE)
+      message(paste("  [!] Found", nrow(trial_outliers), "outliers. Saved to review list."))
+    } else {
+      message("  [✓] No outliers > 4 detected.")
+    }
+    
+    # Update model to generate Average Outlier Measure (AOM) for plotting
+    out.fm <- suppressWarnings(update.asreml(best_m_fit, aom = TRUE))
+    
+    pdf(file = plot_file_path, width = 8, height = 6)
+    
+    tryCatch({
+      plot(out.fm, res = 'stdCond', main = paste("Standardised Residuals:", trial_name_str))
+    }, error = function(e) message("    [!] Could not plot residuals: ", e$message))
+    
+    tryCatch({
+      met.asreml(best_m_fit) 
+    }, error = function(e) message("    [!] Could not plot variogram: ", e$message))
+    
+    dev.off()
+    message("  [✓] Diagnostic plots saved to folder.")
+    
+  }, error = function(e) {
+    message(paste("  [!] Error processing trial:", e$message))
+  })
+}
+
+```
+
+# Diagnostic Review Template
+```{r}
+# --- Generate Diagnostic Review Template ---
+require(writexl)
+require(dplyr)
+require(purrr)
+
+message("\n==================================================")
+message("Generating Trial Terms Template for Diagnostic Review")
+message("==================================================")
+
+tables_dir <- "outputs/tables"
+selection_files <- list.files(tables_dir, pattern = "_Spatial_Model_Selection\\.csv$", full.names = TRUE)
+
+# Pass YT.df into the function to check for blocks and ungenotyped lines
+build_template_row <- function(file_path, full_data) {
+  file_name <- basename(file_path)
+  trial_name <- gsub("_Spatial_Model_Selection\\.csv$", "", file_name)
+  
+  model_data <- read.csv(file_path)
+  best_model <- as.character(model_data$Model[1])
+  
+  # Filter data for this specific trial to check structure
+  trial_data <- full_data %>% filter(studyName == trial_name)
+  
+  has_blocks <- "blockNumber" %in% names(trial_data) && n_distinct(trial_data$blockNumber, na.rm = TRUE) > 1
+  has_ungenotyped <- sum(!is.na(trial_data$gdrop)) > 0
+  
+  # Rebuild the exact random terms used in the main loop
+  rand_terms <- c("vm(gkeep, G.inv)", "colNumber", "rowNumber")
+  if (has_ungenotyped) rand_terms <- c(rand_terms, "gdrop")
+  if (has_blocks) rand_terms <- c(rand_terms, "blockNumber")
+  if (!is.na(best_model) && best_model == "AxAe") rand_terms <- c(rand_terms, "units")
+  
+  base_fixed <- "Yield ~ 1"
+  base_random <- paste("~", paste(rand_terms, collapse = " + "))
+  
+  data.frame(
+    studyName = trial_name,
+    best_model = best_model,
+    fixed_terms = base_fixed,
+    random_terms = base_random,
+    remove_outliers = FALSE,  
+    stringsAsFactors = FALSE
+  )
+}
+
+if (length(selection_files) > 0) {
+  # map_dfr allows us to pass YT.df as an extra argument to build_template_row
+  template_df <- purrr::map_dfr(selection_files, ~build_template_row(.x, YT.df))
+  
+  template_path <- "outputs/Diagnostic_Review_Template.xlsx"
+  write_xlsx(template_df, template_path)
+  message(paste("  [✓] Excel template generated at:", template_path))
+} else {
+  message("  [!] No spatial model selection files found. Run the main loop first.")
+}
+```
+
+
+# MODIFIED TRIAL
+```{r}
+# --- Evaluate Modified Models (MOD) ---
+require(readxl)
+require(dplyr)
+
+message("\n==================================================")
+message("Evaluating Human-Modified (MOD) Spatial Models")
+message("==================================================")
+
+tables_dir <- "outputs/tables"
+template_path <- "outputs/Diagnostic_Review_Template.xlsx"
+
+if (!file.exists(template_path)) {
+  stop("Excel template not found. Please run the template generation chunk first.")
+}
+
+mod_data <- read_xlsx(template_path)
+
+for (i in 1:nrow(mod_data)) {
+  
+  trial_name_str <- mod_data$studyName[i]
+  base_model     <- mod_data$best_model[i]
+  rem_outliers   <- as.logical(mod_data$remove_outliers[i]) # Check the flag
+  
+  message(paste("\nTesting MOD for Trial:", trial_name_str))
+  
+  trial_data <- YT.df %>% filter(studyName == trial_name_str)
+  if(nrow(trial_data) == 0) next
+  
+  # --- NEW: Outlier Handling ---
+  if (isTRUE(rem_outliers)) {
+    outlier_file <- file.path(tables_dir, paste0(trial_name_str, "_Flagged_Outliers.csv"))
+    
+    if (file.exists(outlier_file)) {
+      outliers_df <- read.csv(outlier_file)
+      message(paste("  [!] Removing", nrow(outliers_df), "flagged outliers..."))
+      
+      # Match by row and col, converting to character to ensure safe joins
+      trial_data <- trial_data %>%
+        mutate(col_match = as.character(colNumber), row_match = as.character(rowNumber)) %>%
+        left_join(
+          outliers_df %>% 
+            mutate(col_match = as.character(colNumber), row_match = as.character(rowNumber)) %>%
+            select(col_match, row_match, is_outlier = scres),
+          by = c("col_match", "row_match")
+        ) %>%
+        # If the plot is flagged, set its yield to NA
+        mutate(grain_yield = ifelse(!is.na(is_outlier), NA, grain_yield)) %>%
+        select(-col_match, -row_match, -is_outlier)
+      
+    } else {
+      message("  [!] remove_outliers is TRUE, but no Outlier CSV was found. Proceeding normally.")
+    }
+  }
+  
+  # Data prep continues (the scaled Yield will automatically inherit the NAs we just made)
+  analysis_data <- trial_data %>%
+    mutate(Yield = as.numeric(scale(grain_yield))) %>% 
+    mutate(across(c(rowNumber, colNumber, any_of("blockNumber")), as.factor)) %>%
+    arrange(colNumber, rowNumber)
+  
+  analysis_data$gkeep <- factor(analysis_data$gkeep, levels = attr(G.inv, "rowNames"))
+  analysis_data$gdrop <- as.factor(analysis_data$gdrop)
+  
+  tryCatch({
+    f_form <- as.formula(mod_data$fixed_terms[i])
+    r_form <- as.formula(mod_data$random_terms[i])
+    
+    if (grepl("AxA", base_model)) {
+      res_form <- ~ ar1(colNumber):ar1(rowNumber)
+    } else {
+      res_form <- ~ colNumber:rowNumber
+    }
+    
+    m_mod <- asreml(
+      fixed = f_form, 
+      random = r_form, 
+      residual = res_form, 
+      data = analysis_data, 
+      trace = FALSE, 
+      maxiter = 50, 
+      na.action = na.method(y = "include", x = "include")
+    )
+    if (!m_mod$converge) m_mod <- mkConv(m_mod)
+    
+    # Update Model Selection CSV
+    sel_file <- file.path(tables_dir, paste0(trial_name_str, "_Spatial_Model_Selection.csv"))
+    if (file.exists(sel_file)) {
+      sel_df <- read.csv(sel_file) %>% filter(Model != "MOD")
+      
+      mod_row <- data.frame(
+        Model = "MOD", 
+        AIC = summary(m_mod)$aic, 
+        LogLik = m_mod$loglik, 
+        Converged = m_mod$converge,
+        stringsAsFactors = FALSE
+      )
+      
+      sel_df <- bind_rows(sel_df, mod_row) %>% arrange(AIC)
+      write.csv(sel_df, sel_file, row.names = FALSE)
+      message(paste("  [✓] Updated AIC selection. MOD AIC:", round(mod_row$AIC, 2)))
+    }
+    
+    # Update Final Metrics CSV
+    met_file <- file.path(tables_dir, paste0(trial_name_str, "_Final_Metrics.csv"))
+    if (file.exists(met_file)) {
+      
+      # THE FIX: Read the CSV and cast all columns to character to match the incoming data
+      met_df <- read.csv(met_file) %>% 
+        mutate(across(everything(), as.character)) %>% 
+        filter(!grepl("MOD", Model))
+      
+      mod_params <- list(f = f_form, r = r_form, res = res_form)
+      mod_metrics <- run_final_analysis(mod_params, "MOD_Univ_Yield", analysis_data, trial_name_str)
+      
+      mod_metrics <- mod_metrics %>% mutate(across(everything(), as.character))
+      met_df <- bind_rows(met_df, mod_metrics)
+      
+      write.csv(met_df, met_file, row.names = FALSE)
+      message("  [✓] Updated variance components and metrics.")
+    }
+    
+    
+  }, error = function(e) {
+    message(paste("  [!] Error evaluating MOD model:", e$message))
+  })
+}
+```
+
+
+
+
+# Final Model Summary
+```{r}
+# --- Generate Final Model Summary Report ---
+require(readxl)
+require(writexl)
+require(dplyr)
+require(purrr)
+
+message("\n==================================================")
+message("Generating Final Model Summary Report (with Formulas)")
+message("==================================================")
+
+tables_dir <- "outputs/tables"
+template_path <- "outputs/Diagnostic_Review_Template.xlsx"
+
+if (!file.exists(template_path)) {
+  stop("Diagnostic template not found. Cannot determine MOD formulas or outlier status.")
+}
+
+# 1. Read the template to capture your manual formulas and outlier decisions
+mod_data <- read_xlsx(template_path)
+
+# 2. Find all the model selection files
+selection_files <- list.files(tables_dir, pattern = "_Spatial_Model_Selection\\.csv$", full.names = TRUE)
+
+# 3. Helper function to extract the winning model and its specific terms
+get_best_model_info <- function(file_path, full_data, template_df) {
+  trial_name <- gsub("_Spatial_Model_Selection\\.csv$", "", basename(file_path))
+  
+  # Get winning model from the CSV
+  model_data <- read.csv(file_path)
+  best_row <- model_data[1, ]
+  final_mod_name <- best_row$Model
+  
+  # Get the template data for this specific trial
+  trial_template <- template_df %>% filter(studyName == trial_name)
+  base_model_from_template <- trial_template$best_model[1]
+  
+  # Extract outlier decision
+  outliers_rem <- if(nrow(trial_template) > 0 && !is.na(trial_template$remove_outliers[1])) {
+    as.logical(trial_template$remove_outliers[1])
+  } else {
+    FALSE
+  }
+  
+  # Determine the exact formulas used
+  if (final_mod_name == "MOD") {
+    # If MOD won, pull the exact terms the user typed in the template
+    f_term <- trial_template$fixed_terms[1]
+    r_term <- trial_template$random_terms[1]
+    
+    # Residuals for MOD were based on the original base model
+    res_term <- ifelse(grepl("AxA", base_model_from_template), 
+                       "~ ar1(colNumber):ar1(rowNumber)", 
+                       "~ colNumber:rowNumber")
+  } else {
+    # If a base model won, reconstruct its exact base formulas
+    trial_data <- full_data %>% filter(studyName == trial_name)
+    has_blocks <- "blockNumber" %in% names(trial_data) && n_distinct(trial_data$blockNumber, na.rm = TRUE) > 1
+    has_ungenotyped <- sum(!is.na(trial_data$gdrop)) > 0
+    
+    f_term <- "Yield ~ 1"
+    
+    rand_list <- c("vm(gkeep, G.inv)", "colNumber", "rowNumber")
+    if (has_ungenotyped) rand_list <- c(rand_list, "gdrop")
+    if (has_blocks) rand_list <- c(rand_list, "blockNumber")
+    if (final_mod_name == "AxAe") rand_list <- c(rand_list, "units")
+    
+    r_term <- paste("~", paste(rand_list, collapse = " + "))
+    
+    res_term <- ifelse(grepl("AxA", final_mod_name), 
+                       "~ ar1(colNumber):ar1(rowNumber)", 
+                       "~ colNumber:rowNumber")
+  }
+  
+  data.frame(
+    studyName = trial_name,
+    final_model = final_mod_name,
+    outliers_removed = outliers_rem,
+    fixed_terms = f_term,
+    random_terms = r_term,
+    residual_terms = res_term,
+    AIC = best_row$AIC,
+    Converged = best_row$Converged,
+    stringsAsFactors = FALSE
+  )
+}
+
+if (length(selection_files) > 0) {
+  # 4. Extract best models across all trials, passing the dataframe and template along
+  final_summary <- purrr::map_dfr(selection_files, ~get_best_model_info(.x, YT.df, mod_data)) %>%
+    arrange(studyName)
+  
+  # 5. Write the final comprehensive report
+  output_path <- "outputs/Final_Model_Summary.xlsx"
+  write_xlsx(final_summary, output_path)
+  
+  message(paste("  [✓] Final summary report generated at:", output_path))
+  
+} else {
+  message("  [!] No spatial model selection files found.")
+}
+
+```
+# MET
+```{r}
+# --- Phase 1: Data Harmonization & Pre-Processing ---
+require(asreml)
+require(dplyr)
+require(readxl)
+require(stringr)
+
+message("\n==================================================")
+message("Constructing 1-Stage MET Model (Step-Up Phase 1)")
+message("==================================================")
+
+tables_dir <- "outputs/tables"
+final_summary_path <- "outputs/Final_Model_Summary.xlsx"
+
+if (!file.exists(final_summary_path)) {
+  stop("Final_Model_Summary.xlsx not found. Please ensure the univariate pipeline is complete.")
+}
+
+final_summary <- read_xlsx(final_summary_path)
+
+# 1. Aggregate and Pre-process
+# Group by trial to scale yield (if scaling was preferred) or use raw yield. 
+# Here we calculate Yield as raw grain_yield to let diag() model the heterogeneous variances.
+met_data <- YT.df %>%
+  filter(studyName %in% final_summary$studyName) %>%
+  mutate(
+    Yield = grain_yield, # Using raw trait values for MET
+    rowNum_num = as.numeric(as.character(rowNumber)),
+    colNum_num = as.numeric(as.character(colNumber))
+  )
+
+# 2. Execute Outlier Masking Programmatically
+for (i in 1:nrow(final_summary)) {
+  t_name <- final_summary$studyName[i]
+  rem_outliers <- as.logical(final_summary$outliers_removed[i])
+  
+  if (isTRUE(rem_outliers)) {
+    outlier_file <- file.path(tables_dir, paste0(t_name, "_Flagged_Outliers.csv"))
+    if (file.exists(outlier_file)) {
+      outliers <- read.csv(outlier_file)
+      message(paste("  [-] Masking", nrow(outliers), "outliers for trial:", t_name))
+      
+      # Match by plot and set Yield to NA (preserving the spatial grid)
+      met_data <- met_data %>%
+        mutate(
+          Yield = case_when(
+            studyName == t_name & paste(colNumber, rowNumber, sep="_") %in% 
+              paste(outliers$colNumber, outliers$rowNumber, sep="_") ~ NA_real_,
+            TRUE ~ Yield
+          )
+        )
+    }
+  }
+}
+
+# 3. Enforce Strict Factorization and Initialize 'units'
+met_data <- met_data %>%
+  mutate(
+    # Explicitly create the units term (1 to N)
+    units = as.factor(row_number()), 
+    # Use any_of() so it safely ignores columns that might not exist
+    across(any_of(c("studyName", "blockNumber", "rowNumber", "colNumber")), as.factor)
+  )
+
+# Phase 2 (G-matrix) is handled via your existing G.inv object
+met_data$gkeep <- factor(met_data$gkeep, levels = attr(G.inv, "rowNames"))
+met_data$gdrop <- as.factor(met_data$gdrop)
+
+# --- Phase 3: Model Specification and Initialization ---
+message("  Building dynamic MET equations...")
+
+# 1. Formulate Fixed Equation
+fixed_str <- "Yield ~ studyName"
+
+# Dynamically add linear trends if they were identified in the univariate stage
+trials_lin_row <- final_summary$studyName[grepl("lin\\(rowNumber\\)", final_summary$fixed_terms)]
+trials_lin_col <- final_summary$studyName[grepl("lin\\(colNumber\\)", final_summary$fixed_terms)]
+
+for (t in trials_lin_row) fixed_str <- paste0(fixed_str, " + at(studyName, '", t, "'):rowNum_num")
+for (t in trials_lin_col) fixed_str <- paste0(fixed_str, " + at(studyName, '", t, "'):colNum_num")
+
+fixed_eq <- as.formula(fixed_str)
+
+# 2. Formulate Random Equation (Base Step-Up Model: DIAG)
+random_str <- "~ diag(studyName):vm(gkeep, G.inv) + diag(studyName):gdrop"
+
+# Dynamically map the trial-specific spatial/design elements
+for (i in 1:nrow(final_summary)) {
+  t <- final_summary$studyName[i]
+  r_term <- final_summary$random_terms[i]
+  
+  if (grepl("blockNumber", r_term)) random_str <- paste0(random_str, " + at(studyName, '", t, "'):blockNumber")
+  if (grepl("colNumber", r_term))   random_str <- paste0(random_str, " + at(studyName, '", t, "'):colNumber")
+  if (grepl("rowNumber", r_term))   random_str <- paste0(random_str, " + at(studyName, '", t, "'):rowNumber")
+  if (grepl("units", r_term))       random_str <- paste0(random_str, " + at(studyName, '", t, "'):units")
+}
+
+random_eq <- as.formula(random_str)
+
+# 3. Formulate Residual Equation
+# Using the dsum syntax for heterogeneous AR1 x AR1 errors across trials
+residual_eq <- ~ dsum(~ ar1(colNumber):ar1(rowNumber) | studyName)
+
+
+# --- Phase 4: Model Execution and Step-Up Strategy ---
+message("\n  Executing Base MET Model (diag GxE)...")
+message(paste("  Fixed Eq:", fixed_str))
+
+# Ensure data is sorted for AR1
+met_data <- met_data %>% arrange(studyName, colNumber, rowNumber)
+
+tryCatch({
+  # Fit the base independent GxE model
+  met_step1 <- asreml(
+    fixed = fixed_eq, 
+    random = random_eq, 
+    residual = residual_eq, 
+    data = met_data,
+    workspace = "46gb", 
+    pworkspace = "32gb",
+    trace = TRUE, 
+    maxiter = 50, 
+    na.action = na.method(y = "include", x = "include")
+  )
+  
+  # Ensure convergence
+  if (!met_step1$converge) {
+    message("  [!] Initial MET model did not converge. Attempting mkConv update...")
+    met_step1 <- mkConv(met_step1)
+  }
+  
+  message("  [✓] MET Step 1 Model (DIAG) converged successfully.")
+  
+  # Save the base model workspace object so you don't have to refit it later
+  saveRDS(met_step1, "outputs/MET_Step1_Diag_Model.rds")
+  
+}, error = function(e) {
+  message("  [!] Error executing MET model: ", e$message)
+})
+```
+
+
+
