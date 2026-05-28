@@ -2,17 +2,16 @@
 % Please edit documentation in R/utils_asreml.R
 \name{mkConv}
 \alias{mkConv}
-\title{Force Convergence by Variance Change}
+\title{Safely ensure ASReml model convergence}
 \usage{
 mkConv(mod)
 }
 \arguments{
-\item{mod}{asreml object.}
+\item{mod}{A fitted asreml model object}
 }
 \value{
-Converged asreml object.
+A converged asreml model object
 }
 \description{
-Iteratively updates the model until the percentage change in variance components
-is below a threshold (default 1%).
+This function checks the percentage change in variance components and updates the model if it hasn't converged, up to a maximum number of tries.
 }

@@ -2,21 +2,20 @@
 % Please edit documentation in R/utils_genetics.R
 \name{match_germplasm}
 \alias{match_germplasm}
-\title{Match Germplasm Using Synonyms}
+\title{Match Germplasm Names with Genomic Matrix IDs}
 \usage{
 match_germplasm(name, syn_string, valid_ids)
 }
 \arguments{
-\item{name}{Character or Factor. Primary germplasm name.}
+\item{name}{Primary germplasm name (string or factor)}
 
-\item{syn_string}{Character or Factor. Comma-separated string of synonyms.}
+\item{syn_string}{Comma-separated string of synonyms}
 
-\item{valid_ids}{Character vector. List of valid IDs (e.g., from a GRM).}
+\item{valid_ids}{Character vector of valid IDs in the genomic relationship matrix}
 }
 \value{
-The matched character ID, or NA_character_ if no match is found.
+The matched ID as a character string, or NA_character_ if no match is found
 }
 \description{
-Robustly matches a germplasm name to a list of valid IDs. If the primary name
-fails, it attempts to split and match against a comma-separated list of synonyms.
+Evaluates whether a primary germplasm name or its synonyms exist in a set of valid genomic IDs.
 }

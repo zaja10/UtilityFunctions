@@ -8,15 +8,6 @@ DEFAULT_CHECKS <- c("17-8930", "US16-IL-063-063", "25R76", "AgriMAXX 490", "07-1
 #'
 #' @param x Object of class `fa_model`.
 #' @param type String type of plot: "fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster".
-#' @param n_label Integer. Number of top genotypes to label/highlight (default 5).
-#' @param highlight Character vector. Specific genotypes to highlight.
-#' @param interactive Logical. If TRUE, wraps the ggplot in `plotly::ggplotly()`.
-#' @param ... Additional arguments passed to specific plot methods.
-#' @export
-#' Master Visualization Suite for Factor Analytic Models
-#'
-#' @param x Object of class `fa_model`.
-#' @param type String type of plot: "fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster".
 #' @param factor Integer. Which factor to use for latent regression (default 1).
 #' @param n_label Integer. Number of top genotypes to highlight (default 5).
 #' @param highlight Character vector. Specific genotypes to highlight.
@@ -241,7 +232,7 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
 
-.plot_biplot <- function(x, n, h) {
+.plot_biplot <- function(x, n, h, show_labels) {
   if (is.null(x$scores$rotated) || x$meta$k < 2) {
     stop("Biplot requires at least 2 factors and extracted scores.")
   }
@@ -284,6 +275,16 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
       data = loadings, ggplot2::aes(x = PC1 * 1.1, y = PC2 * 1.1, label = Environment),
       color = "darkblue", size = 3
     )
+  }
+
+  if (show_labels && requireNamespace("ggrepel", quietly = TRUE)) {
+    labels_df <- scores[scores$Type != "Other", ]
+    if (nrow(labels_df) > 0) {
+      p <- p + ggrepel::geom_label_repel(
+        data = labels_df, ggplot2::aes(x = PC1, y = PC2, label = Genotype),
+        size = 3, fontface = "bold", box.padding = 0.5, show.legend = FALSE
+      )
+    }
   }
 
   p + ggplot2::labs(

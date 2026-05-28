@@ -7,8 +7,10 @@
 \method{plot}{fa_model}(
   x,
   type = c("fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster"),
+  factor = 1,
   n_label = 5,
   highlight = NULL,
+  show_labels = TRUE,
   interactive = FALSE,
   ...
 )
@@ -18,9 +20,13 @@
 
 \item{type}{String type of plot: "fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster".}
 
-\item{n_label}{Integer. Number of top genotypes to label/highlight (default 5).}
+\item{factor}{Integer. Which factor to use for latent regression (default 1).}
+
+\item{n_label}{Integer. Number of top genotypes to highlight (default 5).}
 
 \item{highlight}{Character vector. Specific genotypes to highlight.}
+
+\item{show_labels}{Logical. If TRUE, adds text labels to highlighted genotypes.}
 
 \item{interactive}{Logical. If TRUE, wraps the ggplot in `plotly::ggplotly()`.}
 

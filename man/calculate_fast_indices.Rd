@@ -2,7 +2,7 @@
 % Please edit documentation in R/analysis_fa.R
 \name{calculate_fast_indices}
 \alias{calculate_fast_indices}
-\title{Calculate FAST Indices (OP and RMSD)}
+\title{Calculate FAST Indices (OP, RMSD, PEV, Reliability)}
 \usage{
 calculate_fast_indices(fa_object, k = NULL)
 }
@@ -12,7 +12,7 @@ calculate_fast_indices(fa_object, k = NULL)
 \item{k}{Number of factors.}
 }
 \value{
-A dataframe with Genotype, OP, and RMSD.
+A dataframe with Genotype, OP, PEV_OP, Reliability, and RMSD.
 }
 \description{
 Calculates "Factor Analytic Selection Tools" indices from a FA Model.
