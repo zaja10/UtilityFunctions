@@ -4,18 +4,36 @@
 \alias{extract_asreml_outliers}
 \title{Extract Standardized Residuals and Identify Outliers}
 \usage{
-extract_asreml_outliers(best_model, trial_data, threshold = 4)
+extract_asreml_outliers(
+  best_model,
+  trial_data,
+  threshold = 4,
+  aom_fit = NULL,
+  env = parent.frame()
+)
 }
 \arguments{
-\item{best_model}{A converged asreml model object}
+\item{best_model}{A converged \code{asreml} model object.}
 
-\item{trial_data}{The original dataframe used for the trial}
+\item{trial_data}{The data frame the model was fitted to, in the same row
+order.}
 
-\item{threshold}{Numeric value defining the outlier cutoff (default is 4)}
+\item{threshold}{Numeric. Outlier cut-off for |standardised residual|
+(default 4).}
+
+\item{aom_fit}{Optional. An already-computed \code{update(best_model, aom = TRUE)}
+fit, to avoid refitting.}
+
+\item{env}{Environment in which the model's data and any \code{vm()}
+matrices can be found (default: the caller's).}
 }
 \value{
-A dataframe containing only the flagged outliers
+The flagged rows of \code{trial_data} with an added \code{scres}
+  column (all original columns are kept).
 }
 \description{
-This function updates a fitted asreml model to calculate the Average Outlier Measure (AOM), extracts the standardized conditional residuals, and filters for potential outliers based on a defined threshold.
+Refits a fitted \code{asreml} model with \code{aom = TRUE} (alternative
+outlier model; Gogel et al. 2018), attaches the standardised conditional
+residuals to the data and returns the rows whose absolute value exceeds
+\code{threshold}.
 }

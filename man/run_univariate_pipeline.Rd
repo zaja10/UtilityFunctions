@@ -4,18 +4,38 @@
 \alias{run_univariate_pipeline}
 \title{Run Univariate Spatial Pipeline}
 \usage{
-run_univariate_pipeline(data, grm, output_dir = "outputs")
+run_univariate_pipeline(
+  data,
+  grm,
+  output_dir = "outputs",
+  trait = "grain_yield",
+  outlier_threshold = 4
+)
 }
 \arguments{
-\item{data}{Processed dataframe containing phenotype data. Must include `studyName`, `colNumber`, `rowNumber`, `grain_yield`, `gkeep`, and `gdrop`}
+\item{data}{Phenotype data frame with columns \code{studyName},
+\code{colNumber}, \code{rowNumber}, \code{gkeep}, \code{gdrop}, optional
+\code{blockNumber}, and the trait.}
 
-\item{grm}{Genomic relationship matrix inverse}
+\item{grm}{Genomic relationship matrix inverse (ASReml sparse format, see
+\code{\link{prepare_asreml_grm}}, or a dense matrix with row names).}
 
-\item{output_dir}{Path to the output directory (default "outputs")}
+\item{output_dir}{Output directory (default \code{"outputs"}).}
+
+\item{trait}{Character. Trait column (default \code{"grain_yield"}). It is
+standardised within trial before fitting.}
+
+\item{outlier_threshold}{Numeric. |standardised residual| cut-off (default 4).}
 }
 \value{
-NULL (Writes output to tables/ and diagnostics/ subdirectories)
+Invisibly, a data frame with one row per trial: \code{Trial},
+  \code{Status} (\code{"done"}, \code{"skipped"}, \code{"error"}),
+  \code{Model} and \code{Message}. Failures are also summarised in a warning.
 }
 \description{
-Iterates over all trials in the dataset to select the best spatial model, calculate metrics, and output diagnostic plots.
+For every trial: fits RCD, AR1xAR1 and AR1xAR1 + nugget spatial models,
+selects the best converged model by AIC, extracts metrics, flags AOM
+outliers and writes residual diagnostics. A trial is skipped when its
+diagnostics PDF already exists; the PDF is only written once every other
+step has succeeded, so interrupted trials are re-run.
 }

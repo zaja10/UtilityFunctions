@@ -8,72 +8,74 @@ vignette: >
 ---
 
 ```{r, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
+has_asreml <- requireNamespace("asreml", quietly = TRUE)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 5)
 ```
 
-## Introduction
-
-This workflow demonstrates how to extract parameters from a Multi-Environment Trial (MET) analysis and calculate selection indices.
-
-Unlike other tools, `UtilityFunctions` is designed to work with **Base R**, ensuring stability and speed without heavy dependencies.
+This workflow fits a genomic factor analytic (FA) model to a simulated
+multi-environment trial (MET) and uses the FAST selection tools of Smith &
+Cullis (2018). ASReml-R is licensed software; chunks that need it are only run
+when it is installed`r if (!has_asreml) " (it was not available when this vignette was built, so no model output is shown)"`.
 
 ```{r setup}
 library(UtilityFunctions)
-# Note: We do not need to load tidyverse/dplyr
 ```
 
-## 1. Load & Validate Data
+## 1. Simulate and check the data
 
-We assume you have a dataset ready for analysis. Here we mock a simple MET dataset for demonstration.
+`generate_genomic_met()` draws two latent factors from a genomic relationship
+matrix and lays each site out as a randomised complete block design.
 
 ```{r data}
-# Mock Data Creation (Base R)
-set.seed(123)
-sites <- c("SiteA", "SiteB", "SiteC")
-genos <- paste0("G", 1:50)
+G <- generate_grm(n_gen = 80, n_markers = 500, seed = 1)$grm
+met <- generate_genomic_met(n_sites = 6, grm = G, n_reps = 2, h2 = 0.6, seed = 1)
+met$Genotype <- factor(as.character(met$Genotype), levels = rownames(G))
 
-data <- expand.grid(Genotype = genos, Site = sites)
-data$Yield <- rnorm(nrow(data), mean = 10, sd = 2)
-
-# Add some GxE signal
-is_site_a <- data$Site == "SiteA"
-data$Yield[is_site_a] <- data$Yield[is_site_a] +
-  ifelse(as.numeric(factor(data$Genotype[is_site_a])) %% 2 == 0, 2, -2)
-
-# Check integrity using our built-in validator
-# (This uses the new cli-powered validation)
-try(validate_met_data(data, trait = "Yield", genotype = "Genotype", env = "Site"))
+validate_met_data(met, trait = "Yield", genotype = "Genotype", env = "Site")
+conn <- check_met_connectivity(met, trial_col = "Site", gen_col = "Genotype")
 ```
 
-## 2. Fit Model (Conceptual)
+## 2. Fit the FA model
 
-In a real scenario, you would fit an ASReml model. Since ASReml is proprietary, we simulate the structure of a fitted object here to demonstrate the extraction tools.
-
-```{r model_sim}
-# This mock object mimics the structure of a fitted 'fa(Site, 2)' model
-# Ideally, you would run:
-# model <- asreml::asreml(Yield ~ Site, random = ~ fa(Site, 2):Genotype, data = data)
-
-# For vignette purposes, we load a pre-saved mock or generate a dummy structure
-# (Skipping mock generation for brevity in this view)
-# We can re-use the manual mock pattern if needed, or just explain the workflow.
-# For simplicity, we'll demonstrate the structure logic conceptually.
+```{r fit, eval = has_asreml}
+model <- asreml::asreml(
+  Yield ~ Site,
+  random = ~ fa(Site, 2):vm(Genotype, G),
+  residual = ~ dsum(~ units | Site),
+  data = met, trace = FALSE, maxit = 40
+)
+model <- mkConv(model)
 ```
 
-## 3. Extract & Visualize
+## 3. Extract, rotate and rank
 
-The core strength of `UtilityFunctions` is the one-step extraction and the publication-ready plotting.
+`fa.asreml()` reads the loadings, specific variances and scores of the FA term,
+applies the SVD rotation and computes overall performance (OP) and stability
+(RMSD). Supplying the relationship matrix `G` gives reliabilities on the
+correct scale, \(r^2_g = 1 - \mathrm{PEV}/g_{ii}\).
 
-```{r visual, eval=FALSE}
-# Assuming 'fa_obj' is your extracted model object
-# plot(fa_obj, type = "heatmap")
+```{r extract, eval = has_asreml}
+fa <- fa.asreml(model, grm = G)
+summary(fa)
+head(rank_genotypes(fa, weight_stability = 1))
 ```
 
-### Key Functions Used
+## 4. Visualise
 
-* `validate_met_data()`: Checks data before you start.
-* `fa.asreml()`: Extracts loadings/scores robustly.
-* `plot.fa_model()`: Generates standard figures.
+```{r plots, eval = has_asreml}
+plot(fa, type = "fast")
+plot(fa, type = "vaf")
+plot(fa, type = "biplot")
+plot(fa, type = "latent_reg", factor = 2)
+```
+
+## 5. Interaction classes
+
+Environments are grouped by the sign of their factor-2 loadings, and each
+genotype gets a predicted performance within each class.
+
+```{r iclass, eval = has_asreml}
+ic <- calculate_i_classes(fa, factors = 2)
+ic$environments
+head(ic$genotypes[order(-ic$genotypes$iClassOP), ])
+```

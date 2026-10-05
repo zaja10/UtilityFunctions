@@ -9,6 +9,11 @@
 A suite of tools for processing and visualizing Factor Analytic models
 in plant breeding (ASReml-R).
 }
+\details{
+ASReml-R is proprietary and therefore only suggested. Functions that fit or
+interrogate \code{asreml} objects check for it at run time and fail with an
+informative error when it is unavailable.
+}
 \seealso{
 Useful links:
 \itemize{
@@ -19,6 +24,11 @@ Useful links:
 }
 \author{
 \strong{Maintainer}: Zachary Aldiss \email{zaldiss@illinois.edu}
+
+Authors:
+\itemize{
+  \item Zachary Aldiss \email{zaldiss@illinois.edu}
+}
 
 }
 \keyword{internal}

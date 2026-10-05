@@ -2,18 +2,30 @@
 % Please edit documentation in R/analysis_fa.R
 \name{calculate_i_classes}
 \alias{calculate_i_classes}
-\title{Determine Interaction Classes (iClasses)}
+\title{Interaction Classes (iClasses)}
 \usage{
-calculate_i_classes(fa_object, alpha = 0.05)
+calculate_i_classes(fa_object, factors = 2)
 }
 \arguments{
-\item{fa_object}{An FA model object.}
+\item{fa_object}{An SVD-rotated \code{fa_model} with scores.}
 
-\item{alpha}{Significance level for specific interactions (approx).}
+\item{factors}{Integer vector of factors (excluding 1) defining the
+classes (default 2; up to \eqn{2^{|R|}} classes).}
 }
 \value{
-Dataframe with iClass columns.
+A list with \code{environments} (\code{Group}, \code{iClass}) and
+  \code{genotypes} (long: \code{Genotype}, \code{iClass}, \code{n_env},
+  \code{iClassOP}).
 }
 \description{
-Classifies genotypes based on their interaction scores (Significant vs NS).
+Groups environments by the signs of their rotated loadings on the chosen
+factors (Smith et al. 2021) and predicts each genotype's performance within
+each iClass,
+\eqn{\hat\beta_{ic} = \sum_{r \in \{1\} \cup R} \bar\lambda_{rc} f_{ir}},
+where \eqn{\bar\lambda_{rc}} is the mean rotated loading in iClass \eqn{c}.
+}
+\references{
+Smith, A., Norman, A., Kuchel, H. & Cullis, B. (2021). Plant
+  variety selection using interaction classes derived from factor analytic
+  linear mixed models. \emph{Frontiers in Plant Science} 12, 737462.
 }

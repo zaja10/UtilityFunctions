@@ -7,12 +7,12 @@
 \method{plot}{gs_predictions}(x, ...)
 }
 \arguments{
-\item{x}{An object of class `gs_predictions`.}
+\item{x}{A \code{gs_predictions} object.}
 
-\item{...}{Additional arguments (ignored).}
+\item{...}{Ignored.}
 }
 \value{
-Returns the `patchwork` combined figure.
+The \code{patchwork} figure.
 }
 \description{
 Plot Method for Genomic Selection Predictions

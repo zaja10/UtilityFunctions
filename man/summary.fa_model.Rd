@@ -4,17 +4,18 @@
 \alias{summary.fa_model}
 \title{Summary Method for Factor Analytic Models}
 \usage{
-\method{summary}{fa_model}(object, ...)
+\method{summary}{fa_model}(object, n = 5, ...)
 }
 \arguments{
-\item{object}{An object of class `fa_model`.}
+\item{object}{An \code{fa_model}.}
 
-\item{...}{Additional arguments (ignored).}
+\item{n}{Integer. Number of top genotypes to report (default 5).}
+
+\item{...}{Ignored.}
 }
 \value{
-Prints a summary and returns the object invisibly.
+An object of class \code{summary.fa_model}.
 }
 \description{
-Provides a concise summary of the FA model, including variance explained,
-top loading environments, and top performing genotypes.
+Summary Method for Factor Analytic Models
 }

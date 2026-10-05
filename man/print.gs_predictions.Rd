@@ -4,15 +4,17 @@
 \alias{print.gs_predictions}
 \title{Print Method for Genomic Selection Predictions}
 \usage{
-\method{print}{gs_predictions}(x, ...)
+\method{print}{gs_predictions}(x, n = 5, ...)
 }
 \arguments{
-\item{x}{An object of class `gs_predictions`.}
+\item{x}{A \code{gs_predictions} object.}
 
-\item{...}{Additional arguments (ignored).}
+\item{n}{Integer. Number of top targets to show (default 5).}
+
+\item{...}{Ignored.}
 }
 \value{
-Prints a summary and returns the object invisibly.
+\code{x}, invisibly.
 }
 \description{
 Print Method for Genomic Selection Predictions

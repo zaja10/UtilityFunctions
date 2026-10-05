@@ -20,16 +20,21 @@ calculate_vegetation_indices(
   lambda_R = 670,
   lambda_G = 550,
   k = 0,
-  c = 1,
-  epsilon = 0.1,
-  fdelta = 0
+  c = 1.16,
+  epsilon = 1,
+  fdelta = 0.581,
+  lmb = 1
 )
 }
 \arguments{
 \item{spectra_df}{A data frame where rows are observations and columns are spectral bands.
 Expected column names include: N, R, G, B, RE1, RE2, RE3, S1, S2, PAR, A, G1, N2.}
 
-\item{g, C1, C2, L, L_savi, gamma, alpha, sla, slb, n, lambda_N, lambda_R, lambda_G, k, c, epsilon, fdelta}{Parameters for specific indices (see defaults).}
+\item{g, C1, C2, L, L_savi, gamma, alpha, sla, slb, n, lambda_N, lambda_R, lambda_G, k, c, epsilon, fdelta, lmb}{Index constants. Defaults follow the Awesome Spectral Indices catalogue
+(Montero et al. 2023), except \code{L_savi} (0.5, the soil-adjusted
+indices' usual value) and the band centre wavelengths (\code{lambda_*},
+generic 800/670/550 nm): set these for your sensor when using
+\code{DVIplus}, \code{NDGI} or \code{NIRvH2}.}
 }
 \value{
 A data frame with the original columns plus new columns for calculated indices.
@@ -38,10 +43,21 @@ A data frame with the original columns plus new columns for calculated indices.
 Calculates vegetation indices from the 'Awesome Spectral Indices' list based
 on columns present in the input data frame.
 }
+\details{
+Formulas are evaluated with band values taken only from the band
+  columns and constants taken only from the arguments, so an unrelated data
+  column called e.g. \code{L} or \code{k} cannot change the result.
+  Existing columns with an index's name are overwritten (with a warning).
+}
 \examples{
 \dontrun{
 df <- data.frame(N = 0.8, R = 0.1, G = 0.2, B = 0.1)
 res <- calculate_vegetation_indices(df)
 names(res)
 }
+}
+\references{
+Montero, D. et al. (2023). A standardized catalogue of
+  spectral indices to advance the use of remote sensing in Earth system
+  research. \emph{Scientific Data} 10, 197.
 }

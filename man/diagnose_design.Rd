@@ -7,14 +7,22 @@
 diagnose_design(data, genotype, trial, rep = NULL)
 }
 \arguments{
-\item{data}{Dataframe containing the trial data.}
+\item{data}{Data frame containing the trial data.}
 
-\item{genotype}{Character. Column name for genotype.}
+\item{genotype}{Character. Genotype column.}
 
-\item{trial}{Character. Column name for trial.}
+\item{trial}{Character. Trial column.}
 
-\item{rep}{Character. Optional column name for rep.}
+\item{rep}{Character. Optional replicate/block column.}
+}
+\value{
+An object of class \code{design_diagnosis}: a list with
+  \code{counts} (overall genotypes \code{G}, trials \code{S}, plots),
+  \code{per_trial} (data frame), \code{connectivity} (trial x trial shared
+  genotype counts; the diagonal is the number of genotypes per trial) and
+  \code{n_clusters}.
 }
 \description{
-Check using `diagnose_design(data, "Geno", "env")`.
+Summarises a MET: genotypes and plots per trial, replication, and the
+genotype overlap between trials.
 }

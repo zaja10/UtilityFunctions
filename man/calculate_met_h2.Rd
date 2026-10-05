@@ -8,33 +8,51 @@ calculate_met_h2(
   model,
   gdrop_term = "studyName:gdrop",
   gkeep_term = "studyName:vm(gkeep, G.inv)",
-  env_var = "studyName"
+  env_var = "studyName",
+  vg_scale = 1,
+  disjoint = TRUE
 )
 }
 \arguments{
 \item{model}{A fitted \code{asreml} object.}
 
-\item{gdrop_term}{Character string. The name of the non-additive/ungenotyped genetic term in vparameters (default "studyName:gdrop").}
+\item{gdrop_term}{Character. Non-additive/ungenotyped genetic term in
+\code{vparameters} (default \code{"studyName:gdrop"}).}
 
-\item{gkeep_term}{Character string. The name of the additive/genotyped genetic term in vparameters (default "studyName:vm(gkeep, G.inv)").}
+\item{gkeep_term}{Character. Additive/genotyped genetic term (default
+\code{"studyName:vm(gkeep, G.inv)"}).}
 
-\item{env_var}{Character string. The environment factor name prefix (default "studyName").}
+\item{env_var}{Character. Environment factor name (default \code{"studyName"}).}
+
+\item{vg_scale}{Numeric. Multiplier for the additive component, e.g.
+\code{mean(diag(G)) - mean(G)} (default 1).}
+
+\item{disjoint}{Logical. Do the two genetic terms cover different lines
+(default \code{TRUE})?}
 }
 \value{
-A data frame containing:
-\describe{
-  \item{Trial}{The name of the trial/environment.}
-  \item{Vg_add}{Additive genetic variance component.}
-  \item{Vg_na}{Non-additive genetic variance component.}
-  \item{Vg_total}{Total genetic variance (Vg_add + Vg_na).}
-  \item{V_spatial}{Spatial/residual variance component.}
-  \item{V_units}{Units/nugget variance component.}
-  \item{H2}{Broad-sense heritability on a plot-basis.}
-  \item{h2}{Narrow-sense heritability on a plot-basis.}
-}
+A data frame with \code{Trial}, \code{Vg_add}, \code{Vg_na},
+  \code{V_spatial}, \code{V_units} and the heritabilities above
+  (\code{h2}, \code{H2_ungenotyped} when \code{disjoint}; otherwise
+  \code{Vg_total}, \code{H2}, \code{h2}). Components are matched to trials
+  by name; a trial without an ungenotyped-line component gets
+  \code{Vg_na = 0}.
 }
 \description{
-Calculates plot-basis heritability (broad-sense H2 and narrow-sense h2)
-for multi-environment trials (MET) from a fitted ASReml model with diagonal
-or factor analytic covariance structures.
+Plot-basis heritability per trial from a MET model with \code{diag}
+genetic terms.
+}
+\details{
+Two designs are supported:
+\describe{
+  \item{\code{disjoint = TRUE} (default; the package pipeline)}{\code{gkeep}
+    holds genotyped lines (\code{vm()} term) and \code{gdrop} holds the
+    \emph{other}, ungenotyped lines. Each plot carries only one of the two
+    variances, so they are never summed: \eqn{h^2 = V_a / (V_a + V_e)} for
+    genotyped lines and \eqn{H^2_{ungenotyped} = V_{na} / (V_{na} + V_e)}.}
+  \item{\code{disjoint = FALSE}}{Both terms apply to the same lines
+    (additive + non-additive): \eqn{H^2 = (V_a + V_{na}) / (V_a + V_{na} + V_e)}
+    and \eqn{h^2 = V_a / (V_a + V_{na} + V_e)}.}
+}
+\eqn{V_e} is the trial's spatial residual plus nugget variance.
 }

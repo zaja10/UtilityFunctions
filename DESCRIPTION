@@ -1,37 +1,39 @@
 Package: UtilityFunctions
 Title: Factor Analytic Model Extraction and Selection Tools
-Version: 1.1.0
-Authors@R: person("Zachary Aldiss", email = "zaldiss@illinois.edu", role = c("aut", "cre"))
-Author: Zachary Aldiss [aut, cre]
-Maintainer: Zachary Aldiss <zaldiss@illinois.edu>
-Description: A specialized suite for processing factor analytic models (ASReml-R).
-    Implements "FAST" selection tools (Smith & Cullis, 2018), design diagnostics, 
-    and cross prediction utilities.
-Depends: 
-    R (>= 3.5.0)
-Imports: 
-    ggplot2,
-    cli,
-    dplyr,
-    rlang,
-    MASS,
-    Matrix,
-    methods,
-    purrr,
+Version: 1.2.0
+Authors@R: person("Zachary", "Aldiss", email = "zaldiss@illinois.edu", role = c("aut", "cre"))
+Description: A specialized suite for processing factor analytic models fitted
+    with ASReml-R. Implements the factor analytic selection tools (FAST) of
+    Smith and Cullis (2018), interaction classes, spatial model selection
+    pipelines, design and connectivity diagnostics, genomic relationship
+    matrix helpers, vegetation index calculation and envirotyping utilities.
+Depends:
+    R (>= 4.1.0)
+Imports:
+    cli (>= 3.4.0),
+    dplyr (>= 1.1.0),
+    ggplot2 (>= 3.4.0),
+    ggrepel,
+    graphics,
+    grDevices,
     patchwork,
-    ggrepel
-Suggests: 
+    readxl,
+    rlang (>= 1.0.0),
+    stats,
+    utils,
+    writexl
+Suggests:
+    asreml,
+    ASExtras4,
     knitr,
+    plotly,
     rmarkdown,
     testthat (>= 3.0.0),
-    agridat,
-    ggrepel,
-    asreml
-License: MIT
+    withr
+License: MIT + file LICENSE
 Encoding: UTF-8
-LazyData: true
-RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 URL: https://github.com/zaja10/UtilityFunctions
 BugReports: https://github.com/zaja10/UtilityFunctions/issues
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

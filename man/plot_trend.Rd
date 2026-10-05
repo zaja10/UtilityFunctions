@@ -6,27 +6,34 @@
 \usage{
 plot_trend(
   data,
-  mode = "phenotypic",
+  mode = c("phenotypic", "genetic"),
   x = "Year",
   y = "Yield",
-  checks = DEFAULT_CHECKS
+  checks = NULL,
+  genotype_col = "Genotype"
 )
 }
 \arguments{
-\item{data}{Dataframe.}
+\item{data}{Data frame.}
 
-\item{mode}{String. "phenotypic" or "genetic".}
+\item{mode}{\code{"phenotypic"} or \code{"genetic"}.}
 
-\item{x}{String. X-axis column (Year).}
+\item{x}{X-axis column (numeric year).}
 
-\item{y}{String. Y-axis column (Yield or BLUP).}
+\item{y}{Y-axis column.}
 
-\item{checks}{Character vector. Names of checks to highlight (only for genetic mode).}
+\item{checks}{Character vector of checks to highlight (genetic mode).}
+
+\item{genotype_col}{Genotype column used for check highlighting.}
+}
+\value{
+A ggplot object.
 }
 \description{
-Visualizes data over time (e.g., Year).
 \itemize{
-  \item "phenotypic": Boxplots + Regression (Rate of Change).
-  \item "genetic": Scatterplot of BLUPs + Check highlighting.
+  \item \code{"phenotypic"}: boxplots per year with the regression line of
+    the trait on (numeric) year, so unequally spaced years are handled.
+  \item \code{"genetic"}: scatterplot of genetic values with regression and
+    optional check highlighting.
 }
 }

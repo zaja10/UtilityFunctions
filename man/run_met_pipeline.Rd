@@ -2,30 +2,44 @@
 % Please edit documentation in R/pipeline_genomic_prediction.R
 \name{run_met_pipeline}
 \alias{run_met_pipeline}
-\title{Construct and Run 1-Stage MET Model (Phase 1)}
+\title{Construct and Run the 1-Stage MET Model (Step-Up Phase 1)}
 \usage{
 run_met_pipeline(
   data,
   grm,
   final_summary_path,
   tables_dir = "outputs/tables",
-  save_dir = "outputs"
+  save_dir = "outputs",
+  trait = "grain_yield",
+  trace = TRUE,
+  ...
 )
 }
 \arguments{
-\item{data}{Dataframe containing phenotype data}
+\item{data}{Phenotype data frame (see \code{\link{run_univariate_pipeline}}).}
 
-\item{grm}{Genomic relationship matrix inverse}
+\item{grm}{Genomic relationship matrix inverse.}
 
-\item{final_summary_path}{Path to the Final Model Summary Excel file}
+\item{final_summary_path}{Path to \code{Final_Model_Summary.xlsx}.}
 
-\item{tables_dir}{Path to the output tables directory containing outlier CSVs (default "outputs/tables")}
+\item{tables_dir}{Directory with outlier CSVs (default \code{"outputs/tables"}).}
 
-\item{save_dir}{Path to directory to save the output RDS (default "outputs")}
+\item{save_dir}{Directory to save the fitted model RDS (default \code{"outputs"}).}
+
+\item{trait}{Character. Trait column (default \code{"grain_yield"}).}
+
+\item{trace}{Logical. Print ASReml iteration trace (default \code{TRUE}).}
+
+\item{...}{Further arguments for \code{asreml::asreml()}, e.g.
+\code{workspace = "8gb"}.}
 }
 \value{
-A fitted asreml MET model object
+The fitted \code{asreml} model. Errors are raised, not swallowed.
 }
 \description{
-Pre-processes the dataset masking defined outliers and dynamically constructs fixed, random, and residual equations to fit the step-up stage 1 MET model.
+Builds a single-stage MET model from the per-trial decisions in the final
+summary: trial-specific linear row/column trends, blocks, row/column and
+nugget effects, and a residual structure that matches each trial's
+selected model (AR1xAR1 or independent), with \code{diag} genetic
+variance across trials.
 }

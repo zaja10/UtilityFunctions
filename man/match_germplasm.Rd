@@ -7,15 +7,19 @@
 match_germplasm(name, syn_string, valid_ids)
 }
 \arguments{
-\item{name}{Primary germplasm name (string or factor)}
+\item{name}{Primary germplasm name(s) (character or factor).}
 
-\item{syn_string}{Comma-separated string of synonyms}
+\item{syn_string}{Comma-separated synonym string(s), recycled to the length
+of \code{name}. \code{NA} or \code{""} means no synonyms.}
 
-\item{valid_ids}{Character vector of valid IDs in the genomic relationship matrix}
+\item{valid_ids}{Character vector of valid IDs in the genomic relationship matrix.}
 }
 \value{
-The matched ID as a character string, or NA_character_ if no match is found
+Character vector the length of \code{name}: the matched ID, or
+  \code{NA_character_} where nothing matches.
 }
 \description{
-Evaluates whether a primary germplasm name or its synonyms exist in a set of valid genomic IDs.
+For each germplasm name, returns the name itself if it is a valid genomic
+ID, otherwise the first of its comma-separated synonyms that is.
+Vectorised over \code{name} and \code{syn_string}.
 }

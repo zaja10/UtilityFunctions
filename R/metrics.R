@@ -1,177 +1,198 @@
 #' Calculate Genetic Gain
 #'
-#' Estimates genetic gain using either "Realized" (Historical Regression) or
-#' "Predicted" (Breeder's Equation) methods.
+#' \strong{Predicted} (model input): the breeder's equation
+#' \eqn{R = i \, r \, \sigma_G / L}, with selection intensity \eqn{i} for the
+#' top \code{selection_percent}, selection accuracy \eqn{r} and cycle length
+#' \eqn{L}.
 #'
-#' @param input Either a dataframe (for "Realized") or an `fa_model`/`asreml` object (for "Predicted").
-#' @param ... arguments handling specifics.
-#' \describe{
-#'   \item{Realized}{Requires `year_col` (Year) and `value_col` (Yield/BV).}
-#'   \item{Predicted}{Requires `selection_percent` (default 5).}
-#' }
+#' \strong{Realized} (data frame input): the slope of \code{value_col} on
+#' \code{year_col}. Raw phenotypes confound genetic and environmental trend;
+#' supply genotype BLUPs against year of first testing, or supply
+#' \code{check_list}: checks are genetically constant, so their slope
+#' estimates the environmental trend, which is subtracted.
 #'
-#' @return
-#' For Realized: A list with slope, R2, and pct_gain.
-#' For Predicted: A dataframe of potential gain per trait/site.
-#' @importFrom stats lm coef dnorm qnorm as.formula
+#' @param input A data frame (realized) or an \code{fa_model}/\code{asreml}
+#'   object (predicted).
+#' @param selection_percent Numeric in (0, 100). Percentage selected (default 5).
+#' @param accuracy Numeric in (0, 1]. Selection accuracy \eqn{r} (scalar or
+#'   one per group). If \code{NULL}, \eqn{r = 1} is used and a warning is
+#'   raised because the result is then an upper bound.
+#' @param cycle_length Numeric. Years per breeding cycle (default 1).
+#' @param varcomp_term Character. For \code{asreml} input, the exact name of
+#'   the genetic variance component.
+#' @param year_col,value_col,genotype_col Column names for realized gain.
+#' @param check_list Character vector of check genotypes (realized gain).
+#'
+#' @return Predicted: data frame with \code{Group}, \code{Sigma_G},
+#'   \code{Intensity}, \code{Accuracy}, \code{Predicted_Gain} (per year).
+#'   Realized: list with \code{Method}, \code{Slope}, \code{Env_Slope},
+#'   \code{Pct_Gain_Per_Year} and \code{R2}.
 #' @export
-calculate_genetic_gain <- function(input, ...) {
-    args <- list(...)
-
-    # MODE 1: PREDICTED (Model Object)
-    if (inherits(input, c("asreml", "fa_model"))) {
-        sel_pct <- if ("selection_percent" %in% names(args)) args$selection_percent else 5
-        if (sel_pct <= 0 || sel_pct >= 100) stop("Selection % must be 0-100")
-
-        # Intensity
-        p <- sel_pct / 100
-        i_val <- dnorm(qnorm(1 - p)) / p
-
-        # Sigma G
-        if (inherits(input, "fa_model")) {
-            Vg <- diag(input$matrices$G)
-            lbl <- names(Vg)
-        } else {
-            # Simple scalar model assumption
-            summ <- summary(input)$varcomp
-            Vg <- summ[grep("Genotype", rownames(summ))[1], "component"]
-            lbl <- "Global"
-        }
-
-        param_gain <- i_val * sqrt(Vg) # Assuming r=1
-
-        return(data.frame(
-            Group = lbl,
-            Sigma_G = sqrt(Vg),
-            Intensity = i_val,
-            Predicted_Gain = param_gain
-        ))
+calculate_genetic_gain <- function(input, selection_percent = 5, accuracy = NULL, cycle_length = 1,
+                                   varcomp_term = NULL, year_col = "Year", value_col = "Yield",
+                                   genotype_col = "Genotype", check_list = NULL) {
+  if (inherits(input, c("asreml", "fa_model"))) {
+    if (!is.numeric(selection_percent) || selection_percent <= 0 || selection_percent >= 100) {
+      cli::cli_abort("{.arg selection_percent} must be in (0, 100).")
     }
+    p <- selection_percent / 100
+    i_val <- stats::dnorm(stats::qnorm(1 - p)) / p
 
-    # MODE 2: REALIZED (Dataframe)
-    else if (is.data.frame(input)) {
-        year_col <- if ("year_col" %in% names(args)) args$year_col else "Year"
-        val_col <- if ("value_col" %in% names(args)) args$value_col else "Yield"
-        checks <- if ("check_list" %in% names(args)) args$check_list else NULL
-
-        if (!all(c(year_col, val_col) %in% names(input))) stop("Columns missing.")
-
-        df <- input
-        if (!is.null(checks)) df <- df[!df$Genotype %in% checks, ]
-
-        form <- as.formula(paste(val_col, "~", year_col))
-        mod <- lm(form, data = df)
-
-        slope <- coef(mod)[2]
-        base_yr <- min(df[[year_col]], na.rm = TRUE)
-        base_val <- predict(mod, newdata = data.frame(setNames(list(base_yr), year_col)))
-
-        return(list(
-            Method = "Realized (Regression)",
-            Slope = slope,
-            Pct_Gain_Per_Year = (slope / base_val) * 100,
-            R2 = summary(mod)$r.squared
-        ))
+    if (inherits(input, "fa_model")) {
+      Vg <- diag(input$matrices$G)
+      lbl <- names(Vg) %||% rownames(input$matrices$G)
     } else {
-        stop("Input must be a dataframe or asreml/fa_model object.")
+      check_asreml_availability()
+      vc <- asreml_components(input)
+      if (is.null(varcomp_term) || !varcomp_term %in% names(vc)) {
+        cli::cli_abort(c(
+          "x" = "Supply {.arg varcomp_term}, the exact genetic variance component name.",
+          "i" = "Available: {.val {names(vc)}}"
+        ))
+      }
+      Vg <- unname(vc[varcomp_term])
+      lbl <- varcomp_term
     }
+
+    if (is.null(accuracy)) {
+      cli::cli_warn("{.arg accuracy} not supplied: assuming r = 1, so {.field Predicted_Gain} is an upper bound.")
+      accuracy <- 1
+    }
+    if (any(accuracy <= 0 | accuracy > 1)) cli::cli_abort("{.arg accuracy} must be in (0, 1].")
+
+    return(data.frame(
+      Group = lbl, Sigma_G = sqrt(Vg), Intensity = i_val, Accuracy = accuracy,
+      Predicted_Gain = i_val * accuracy * sqrt(Vg) / cycle_length,
+      stringsAsFactors = FALSE, row.names = NULL
+    ))
+  }
+
+  if (!is.data.frame(input)) cli::cli_abort("{.arg input} must be a data frame or an asreml/fa_model object.")
+  if (!all(c(year_col, value_col) %in% names(input))) {
+    cli::cli_abort("Columns {.val {c(year_col, value_col)}} are required.")
+  }
+  df <- input[!is.na(input[[value_col]]) & !is.na(input[[year_col]]), , drop = FALSE]
+  df[[year_col]] <- suppressWarnings(as.numeric(as.character(df[[year_col]])))
+  if (anyNA(df[[year_col]])) cli::cli_abort("{.val {year_col}} must be numeric (or a factor of numbers).")
+
+  form <- stats::as.formula(paste0("`", value_col, "` ~ `", year_col, "`"))
+  env_slope <- 0
+  if (!is.null(check_list)) {
+    if (!genotype_col %in% names(df)) cli::cli_abort("Column {.val {genotype_col}} is required with {.arg check_list}.")
+    is_check <- df[[genotype_col]] %in% check_list
+    if (length(unique(df[[year_col]][is_check])) < 2) {
+      cli::cli_abort("Checks must be observed in at least two years to estimate the environmental trend.")
+    }
+    env_slope <- unname(stats::coef(stats::lm(form, data = df[is_check, , drop = FALSE]))[2])
+    df <- df[!is_check, , drop = FALSE]
+  }
+  mod <- stats::lm(form, data = df)
+  slope <- unname(stats::coef(mod)[2]) - env_slope
+  base <- unname(stats::predict(mod, newdata = stats::setNames(data.frame(min(df[[year_col]])), year_col)))
+
+  list(
+    Method = if (is.null(check_list)) "Realized (regression)" else "Realized (check-adjusted regression)",
+    Slope = slope, Env_Slope = env_slope,
+    Pct_Gain_Per_Year = 100 * slope / base,
+    R2 = summary(mod)$r.squared
+  )
 }
 
 #' Calculate Multi-Environment Heritability
 #'
-#' Calculates plot-basis heritability (broad-sense H2 and narrow-sense h2)
-#' for multi-environment trials (MET) from a fitted ASReml model with diagonal
-#' or factor analytic covariance structures.
+#' Plot-basis heritability per trial from a MET model with \code{diag}
+#' genetic terms.
+#'
+#' Two designs are supported:
+#' \describe{
+#'   \item{\code{disjoint = TRUE} (default; the package pipeline)}{\code{gkeep}
+#'     holds genotyped lines (\code{vm()} term) and \code{gdrop} holds the
+#'     \emph{other}, ungenotyped lines. Each plot carries only one of the two
+#'     variances, so they are never summed: \eqn{h^2 = V_a / (V_a + V_e)} for
+#'     genotyped lines and \eqn{H^2_{ungenotyped} = V_{na} / (V_{na} + V_e)}.}
+#'   \item{\code{disjoint = FALSE}}{Both terms apply to the same lines
+#'     (additive + non-additive): \eqn{H^2 = (V_a + V_{na}) / (V_a + V_{na} + V_e)}
+#'     and \eqn{h^2 = V_a / (V_a + V_{na} + V_e)}.}
+#' }
+#' \eqn{V_e} is the trial's spatial residual plus nugget variance.
 #'
 #' @param model A fitted \code{asreml} object.
-#' @param gdrop_term Character string. The name of the non-additive/ungenotyped genetic term in vparameters (default "studyName:gdrop").
-#' @param gkeep_term Character string. The name of the additive/genotyped genetic term in vparameters (default "studyName:vm(gkeep, G.inv)").
-#' @param env_var Character string. The environment factor name prefix (default "studyName").
+#' @param gdrop_term Character. Non-additive/ungenotyped genetic term in
+#'   \code{vparameters} (default \code{"studyName:gdrop"}).
+#' @param gkeep_term Character. Additive/genotyped genetic term (default
+#'   \code{"studyName:vm(gkeep, G.inv)"}).
+#' @param env_var Character. Environment factor name (default \code{"studyName"}).
+#' @param vg_scale Numeric. Multiplier for the additive component, e.g.
+#'   \code{mean(diag(G)) - mean(G)} (default 1).
+#' @param disjoint Logical. Do the two genetic terms cover different lines
+#'   (default \code{TRUE})?
 #'
-#' @return A data frame containing:
-#' \describe{
-#'   \item{Trial}{The name of the trial/environment.}
-#'   \item{Vg_add}{Additive genetic variance component.}
-#'   \item{Vg_na}{Non-additive genetic variance component.}
-#'   \item{Vg_total}{Total genetic variance (Vg_add + Vg_na).}
-#'   \item{V_spatial}{Spatial/residual variance component.}
-#'   \item{V_units}{Units/nugget variance component.}
-#'   \item{H2}{Broad-sense heritability on a plot-basis.}
-#'   \item{h2}{Narrow-sense heritability on a plot-basis.}
-#' }
+#' @return A data frame with \code{Trial}, \code{Vg_add}, \code{Vg_na},
+#'   \code{V_spatial}, \code{V_units} and the heritabilities above
+#'   (\code{h2}, \code{H2_ungenotyped} when \code{disjoint}; otherwise
+#'   \code{Vg_total}, \code{H2}, \code{h2}). Components are matched to trials
+#'   by name; a trial without an ungenotyped-line component gets
+#'   \code{Vg_na = 0}.
 #' @export
-calculate_met_h2 <- function(model, gdrop_term = "studyName:gdrop", gkeep_term = "studyName:vm(gkeep, G.inv)", env_var = "studyName") {
-    check_asreml_availability()
+calculate_met_h2 <- function(model, gdrop_term = "studyName:gdrop", gkeep_term = "studyName:vm(gkeep, G.inv)",
+                             env_var = "studyName", vg_scale = 1, disjoint = TRUE) {
+  if (!inherits(model, "asreml")) cli::cli_abort("Input must be a valid asreml model.")
+  check_asreml_availability()
+  varp <- summary(model, vparameters = TRUE)$vparameters
+  if (is.null(varp)) cli::cli_abort("Could not extract vparameters from the model summary.")
+  met_h2_from_vparameters(varp, gdrop_term, gkeep_term, env_var, vg_scale, disjoint)
+}
 
-    if (!inherits(model, "asreml")) {
-        stop("Input must be a valid asreml model.")
-    }
+met_h2_from_vparameters <- function(varp, gdrop_term, gkeep_term, env_var, vg_scale = 1, disjoint = TRUE) {
+  if (!gkeep_term %in% names(varp)) {
+    cli::cli_abort(c("x" = "Term {.val {gkeep_term}} not found.", "i" = "Available: {.val {names(varp)}}"))
+  }
+  clean <- function(n) sub(paste0("^", env_var, "_"), "", sub(".*!", "", n))
+  va <- varp[[gkeep_term]]
+  va <- stats::setNames(as.numeric(va), clean(names(va)))
+  vna <- if (gdrop_term %in% names(varp)) {
+    v <- varp[[gdrop_term]]
+    stats::setNames(as.numeric(v), clean(names(v)))
+  } else {
+    cli::cli_alert_info("Term {.val {gdrop_term}} not found; Vg_na set to 0.")
+    numeric(0)
+  }
 
-    # 1. Extract vparameters
-    summ_list <- summary(model, vparameters = TRUE)
-    if (!"vparameters" %in% names(summ_list)) {
-        stop("Could not extract vparameters from the model summary.")
-    }
-    varp <- summ_list$vparameters
+  trials <- names(va)
+  extra <- setdiff(names(vna), trials)
+  if (length(extra) > 0) cli::cli_warn("Trials with only an ungenotyped component are ignored: {.val {extra}}.")
 
-    # 2. Extract Genetic Components
-    if (!gdrop_term %in% names(varp)) {
-        stop(paste("gdrop term", gdrop_term, "not found in vparameters. Available names:", paste(names(varp), collapse = ", ")))
-    }
-    if (!gkeep_term %in% names(varp)) {
-        stop(paste("gkeep term", gkeep_term, "not found in vparameters. Available names:", paste(names(varp), collapse = ", ")))
-    }
+  all_names <- names(varp)
+  first_match <- function(pattern) {
+    hit <- grep(pattern, all_names, fixed = TRUE)
+    if (length(hit) == 0) NA_real_ else as.numeric(varp[[hit[1]]][1])
+  }
+  v_sp <- vapply(trials, function(tr) {
+    if (tr %in% all_names) as.numeric(varp[[tr]][1]) else first_match(paste0(env_var, "_", tr, "!R"))
+  }, numeric(1))
+  v_un <- vapply(trials, function(tr) {
+    u <- first_match(paste0("'", tr, "'):units"))
+    if (is.na(u)) u <- first_match(paste0("\"", tr, "\"):units"))
+    if (is.na(u)) 0 else u
+  }, numeric(1))
+  if (anyNA(v_sp)) cli::cli_warn("No residual variance found for {.val {trials[is.na(v_sp)]}}; heritability is NA there.")
 
-    vna_raw <- varp[[gdrop_term]]
-    va_raw <- varp[[gkeep_term]]
-
-    clean_trial <- function(n) {
-        n <- sub(".*!", "", n)
-        n <- sub(paste0("^", env_var, "_"), "", n)
-        return(n)
-    }
-
-    trial_keys <- clean_trial(names(vna_raw))
-
-    # 3. Build Results Data Frame
-    results <- data.frame(
-        Trial = trial_keys,
-        Vg_add = as.numeric(va_raw),
-        Vg_na = as.numeric(vna_raw),
-        V_spatial = NA_real_,
-        V_units = 0, # Default to 0 as some trials lack nugget
-        stringsAsFactors = FALSE
-    )
-    results$Vg_total <- results$Vg_add + results$Vg_na
-
-    # 4. Map Residuals and Units
-    all_param_names <- names(varp)
-
-    for (i in 1:nrow(results)) {
-        tr <- results$Trial[i]
-
-        # A. Extract Spatial Variance
-        if (tr %in% all_param_names) {
-            results$V_spatial[i] <- varp[[tr]][1]
-        } else {
-            spatial_pattern <- paste0(env_var, "_", tr, "!R")
-            match_idx <- grep(spatial_pattern, all_param_names, fixed = TRUE)
-            if (length(match_idx) > 0) {
-                results$V_spatial[i] <- varp[[match_idx[1]]][1]
-            }
-        }
-
-        # B. Extract Units (Nugget)
-        unit_pattern <- paste0("'", tr, "'):units")
-        match_unit <- grep(unit_pattern, all_param_names, fixed = TRUE)
-        if (length(match_unit) > 0) {
-            results$V_units[i] <- varp[[match_unit[1]]][1]
-        }
-    }
-
-    # 5. Calculate Heritability (Plot-Basis)
-    results$H2 <- results$Vg_total / (results$Vg_total + results$V_spatial + results$V_units)
-    results$h2 <- results$Vg_add / (results$Vg_add + results$V_spatial + results$V_units)
-
-    return(results)
+  res <- data.frame(
+    Trial = trials,
+    Vg_add = unname(va) * vg_scale,
+    Vg_na = unname(ifelse(trials %in% names(vna), vna[trials], 0)),
+    V_spatial = unname(v_sp), V_units = unname(v_un),
+    stringsAsFactors = FALSE
+  )
+  v_res <- res$V_spatial + res$V_units
+  if (disjoint) {
+    # Genotyped and ungenotyped lines are different sets: never add their variances.
+    res$h2 <- res$Vg_add / (res$Vg_add + v_res)
+    res$H2_ungenotyped <- ifelse(res$Vg_na > 0, res$Vg_na / (res$Vg_na + v_res), NA_real_)
+    return(res[, c("Trial", "Vg_add", "Vg_na", "V_spatial", "V_units", "h2", "H2_ungenotyped")])
+  }
+  res$Vg_total <- res$Vg_add + res$Vg_na
+  res$H2 <- res$Vg_total / (res$Vg_total + v_res)
+  res$h2 <- res$Vg_add / (res$Vg_total + v_res)
+  res[, c("Trial", "Vg_add", "Vg_na", "Vg_total", "V_spatial", "V_units", "H2", "h2")]
 }

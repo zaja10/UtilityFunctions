@@ -2,18 +2,21 @@
 % Please edit documentation in R/analysis_fa.R
 \name{rank_genotypes}
 \alias{rank_genotypes}
-\title{Rank Genotypes using Selection Index}
+\title{Rank Genotypes using a Selection Index}
 \usage{
 rank_genotypes(fast_df, weight_stability = 1)
 }
 \arguments{
-\item{fast_df}{Dataframe containing OP and RMSD columns.}
+\item{fast_df}{Data frame with \code{OP} and \code{RMSD} columns, or an
+\code{fa_model}.}
 
-\item{weight_stability}{Numeric. penalty 'b'.}
+\item{weight_stability}{Numeric. Penalty \eqn{b} on RMSD (default 1).
+OP and RMSD share the trait's units, so \eqn{b} is the yield a breeder
+would trade for one unit less crossover GxE.}
 }
 \value{
-The dataframe sorted by Index.
+The data frame sorted by \code{Index}, with a \code{Rank} column.
 }
 \description{
-Ranks genotypes based on a Smith-Cullis index: I = OP - b * RMSD.
+Ranks genotypes by \eqn{I = OP - b \times RMSD}.
 }

@@ -13,5 +13,6 @@ makeNm(df)
 Numeric vector.
 }
 \description{
-Convert Factor to Numeric safely
+Converts via \code{as.character()}, so factor labels (not level codes)
+are used.
 }

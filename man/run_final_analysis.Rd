@@ -4,22 +4,39 @@
 \alias{run_final_analysis}
 \title{Run Final Best Model and Extract Metrics}
 \usage{
-run_final_analysis(params, model_name, df, trial_name, grm)
+run_final_analysis(
+  params,
+  model_name,
+  df,
+  trial_name,
+  grm,
+  genotype_term = "vm(gkeep, grm)",
+  vg_scale = 1
+)
 }
 \arguments{
-\item{params}{List containing formulas: f (fixed), r (random), res (residual)}
+\item{params}{List of formulas: \code{f} (fixed), \code{r} (random),
+\code{res} (residual).}
 
-\item{model_name}{Name of the final model}
+\item{model_name}{Name of the model (used only as a label).}
 
-\item{df}{Dataframe containing the trial data}
+\item{df}{Data frame containing the trial data.}
 
-\item{trial_name}{Name of the trial being analyzed}
+\item{trial_name}{Name of the trial being analysed.}
 
-\item{grm}{Genomic relationship matrix inverse}
+\item{grm}{Genomic relationship matrix (inverse) referenced as \code{grm}
+inside the formulas.}
+
+\item{genotype_term}{Character. Genetic variance component name
+(default \code{"vm(gkeep, grm)"}).}
+
+\item{vg_scale}{See \code{\link{extract_variance_components}}.}
 }
 \value{
-A dataframe of extracted variance components and metrics
+A one-row data frame of metrics, including \code{n_reps}, the
+  harmonic mean number of observed plots per genotype used for \code{h2}.
 }
 \description{
-Runs the best selected spatial model and extracts key quantitative genetics metrics like Vg, Ve, Vr, h2, and Accuracy.
+Fits the selected spatial model and extracts variance components,
+heritability and accuracy via \code{\link{extract_variance_components}}.
 }

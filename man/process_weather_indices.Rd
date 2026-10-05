@@ -8,25 +8,36 @@ process_weather_indices(
   weather_data,
   trial_metadata,
   t_base = 0,
-  heat_threshold = 30
+  heat_threshold = 30,
+  min_coverage = 0.9
 )
 }
 \arguments{
-\item{weather_data}{A dataframe containing daily weather. Columns must include:
-"Date" (Date object), "Location", "MinT", "MaxT", "Precip".
-Optional: "Radiation", "ET0".}
+\item{weather_data}{Daily weather with columns \code{Date},
+\code{Location}, \code{MinT}, \code{MaxT}, \code{Precip}; optional
+\code{ET0}.}
 
-\item{trial_metadata}{A dataframe containing trial dates. Columns must include:
-"TrialID", "Location", "PlantingDate", "FloweringDate", "HarvestDate".}
+\item{trial_metadata}{Trial dates with columns \code{TrialID},
+\code{Location}, \code{PlantingDate}, \code{FloweringDate},
+\code{HarvestDate}.}
 
-\item{t_base}{Numeric. Base temperature for GDD calculation (default 0).}
+\item{t_base}{Numeric. Base temperature for growing degree days (default 0).}
 
-\item{heat_threshold}{Numeric. Threshold for heat stress calculation (default 30).}
+\item{heat_threshold}{Numeric. Daily maximum above which a day counts as
+heat stress (default 30).}
+
+\item{min_coverage}{Numeric in (0, 1]. Minimum fraction of days in a window
+with weather records; windows below it return \code{NA} (default 0.9).}
 }
 \value{
-A matrix of environmental covariates (Rows = Trials, Cols = Indices).
+A numeric matrix (rows = trials) with, per window, \code{_GDD}
+  (sum of daily \eqn{\max(0, (T_{max}+T_{min})/2 - T_{base})}),
+  \code{_HeatStress} (days above \code{heat_threshold}), \code{_Precip},
+  and, when \code{ET0} is present, \code{_WaterBalance}
+  (\eqn{\sum(P - ET_0)}; negative values indicate a deficit).
 }
 \description{
-Aggregates daily weather data into biological windows (Vegetative, Flowering, Grain Fill)
-to create environmental covariates (ECs) suitable for Factorial Regression models.
+Aggregates daily weather into two developmental windows, Vegetative
+(planting to the day before flowering) and GrainFill (flowering to harvest),
+producing environmental covariates (ECs) for factorial regression.
 }

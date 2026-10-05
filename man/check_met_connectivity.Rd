@@ -8,26 +8,38 @@ check_met_connectivity(
   data,
   trial_col = "Trial",
   gen_col = "Genotype",
+  min_shared = 1,
+  warn_below = 5,
   stop_if_disconnected = FALSE
 )
 }
 \arguments{
-\item{data}{Dataframe containing the MET data.}
+\item{data}{Data frame containing the MET data.}
 
-\item{trial_col}{Character. Column name for Trial/Environment.}
+\item{trial_col}{Character. Trial/environment column.}
 
-\item{gen_col}{Character. Column name for Genotype.}
+\item{gen_col}{Character. Genotype column.}
 
-\item{stop_if_disconnected}{Logical. If TRUE, stops execution if islands are found.}
+\item{min_shared}{Integer. Minimum shared genotypes for two trials to be
+linked (default 1).}
+
+\item{warn_below}{Integer. Report trials whose best link to any other trial
+shares fewer than this many genotypes (default 5).}
+
+\item{stop_if_disconnected}{Logical. Abort if islands are found.}
 }
 \value{
-A list containing:
-  \item{n_clusters}{Integer. Number of disconnected components.}
-  \item{membership}{Dataframe mapping Trial to Cluster.}
-  \item{islands}{Character vector of Trial names that are disconnected from the main group.}
+A list with \code{n_clusters}, \code{membership} (\code{Trial},
+  \code{Cluster}), \code{islands} (trials outside the largest cluster),
+  \code{shared} (matrix of shared genotype counts) and \code{weak}
+  (trials whose best link is below \code{warn_below}). Rows with missing
+  trial or genotype are ignored.
 }
 \description{
-Scans a Multi-Environment Trial (MET) dataset to identify disconnected clusters
-of environments. Disconnected trials ("islands") will result in singular
-factor analytic models.
+Builds the trial-by-trial matrix of shared genotypes and finds connected
+components. Two trials are linked when they share at least
+\code{min_shared} genotypes. Disconnected trials ("islands") make genetic
+covariances between trial groups inestimable; trials with only a few links
+are flagged because factor analytic covariances need far more than one
+common genotype to be estimated well.
 }

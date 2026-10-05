@@ -4,18 +4,24 @@
 \alias{plot_spatial}
 \title{Plot Spatial Map}
 \usage{
-plot_spatial(input, row = "Row", col = "Column", fill = "Yield")
+plot_spatial(input, row = "Row", col = "Column", fill = "Yield", data = NULL)
 }
 \arguments{
-\item{input}{Either a dataframe or `asreml` object.}
+\item{input}{A data frame, or an \code{asreml} model.}
 
-\item{row}{Colname for Row.}
+\item{row}{Row column name.}
 
-\item{col}{Colname for Column.}
+\item{col}{Column column name.}
 
-\item{fill}{Colname for value to plot. If input is model, "Residuals" is used.}
+\item{fill}{Column to plot (data frame input).}
+
+\item{data}{For \code{asreml} input: the data frame the model was fitted
+to, in the same row order. If \code{NULL}, the data named in the model
+call is looked up.}
+}
+\value{
+A ggplot object.
 }
 \description{
-Visualizes a field trial as a heatmap.
-Wraps ASReml residuals or raw data.
+Draws a field trial as a heatmap of raw values or of model residuals.
 }

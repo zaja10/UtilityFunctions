@@ -1,111 +1,105 @@
 # UtilityFunctions
 
-**Comprehensive Mixed Modeling & Factor Analytic Tools for Plant Breeding**
+**Mixed-model and factor analytic tools for plant breeding**
 
-`UtilityFunctions` provides a specialized suite of tools for robust post-processing of Multi-Environment Trials (MET) using ASReml-R, handling Factor Analytic (FA) models, spatial models, bivariate traits, and genomic/phenomic diagnostics.
-
-## Key Features
-
-1. **Spatial & Bivariate Modeling**: Streamlined wrappers (`compare_spatial_models`, `fit_bivariate_models`) to automate multi-trait and spatial model fitting.
-2. **FA Model Diagnostics**: A universal parser (`fa.asreml`) to extract, rotate, and summarize Factor Analytic/Reduced Rank parameters using the "Smith & Cullis" FAST framework (OP & RMSD).
-3. **Outlier Detection**: Automated Average Outlier Measure (AOM) calculation using `extract_asreml_outliers()`.
-4. **Spectral Analysis**: Evaluate Vegetation Indices using LOCO (Leave-One-Column-Out) cross-validation via `evaluate_vi_loco()`.
-5. **Genomic Utilities**: Subsetting and padding Genomic Relationship Matrices (GRM) safely for ASReml via `prepare_trial_grm()`.
+`UtilityFunctions` post-processes multi-environment trials (METs) fitted with
+ASReml-R: spatial model selection, factor analytic (FA) selection tools
+(FAST), genomic prediction diagnostics, design and connectivity checks,
+vegetation indices and envirotyping.
 
 ## Installation
 
 ```r
-# Install from GitHub
-devtools::install_github("zaja10/UtilityFunctions")
+# install.packages("remotes")
+remotes::install_github("zaja10/UtilityFunctions")
 ```
 
-*Requires `asreml` for model fitting workflows.*
+ASReml-R (licensed) is a *suggested* dependency: the package installs and the
+non-model functions work without it, and model functions abort with a clear
+message when it is missing. `ASExtras4` is optional and only adds variograms to
+the pipeline's diagnostic PDFs.
 
-## Basic Workflow Examples
+## Workflows
 
-### 1. Spatial Model Selection
+### 1. Spatial model selection
 
-Evaluate multiple spatial structures for a single trial and extract variance components.
+All candidate models must share the same response and fixed effects so that
+their REML AICs are comparable; this is checked. Converged fits are ranked
+first.
 
 ```r
 library(UtilityFunctions)
 
-# Define models
 models <- list(
   AxAe = list(fixed = Yield ~ 1, random = ~ Genotype + units, residual = ~ ar1(Col):ar1(Row)),
-  AxA = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ ar1(Col):ar1(Row)),
-  RCD = list(fixed = Yield ~ 1, random = ~ Genotype, residual = ~ Col:Row)
+  AxA  = list(fixed = Yield ~ 1, random = ~ Genotype,         residual = ~ ar1(Col):ar1(Row)),
+  RCD  = list(fixed = Yield ~ 1, random = ~ Genotype,         residual = ~ Col:Row)
 )
+comp <- compare_spatial_models(models, df)
+best <- select_best_model(comp)
 
-# Compare AIC/LogLik
-comp_df <- compare_spatial_models(models, df)
-
-# Extract h2, PEV, and Accuracy
-var_df <- extract_variance_components(best_model, genotype_term = "vm(Genotype, G.inv)", error_term = "Col:Row!R")
+# Variance components, entry-mean h2, generalised reliability (Cullis H2) and accuracy
+extract_variance_components(best_fit, genotype_term = "Genotype", n_reps = 2)
 ```
 
-### 2. Factor Analytic Models (FAST)
-
-Fit an FA model and extract rotated solutions for selection.
+### 2. Univariate → review → MET pipeline
 
 ```r
-# Fit Model
-model <- asreml(fixed = yield ~ env,
-                random = ~ fa(env, 2):gen,
-                data = dasilva.maize)
-
-# Extract & Rotate
-results <- fa.asreml(model, classify = "fa(env, 2):gen", rotate = "mean")
-
-# Print basic summary
-print(results)
-
-# Detailed Summary (VAF, Loadings, OP Index)
-summary(results)
-
-# Extract matrices directly
-loadings <- extract_fa_loadings(results)$Loadings
+Ginv <- prepare_asreml_grm(G)                       # sparse inverse for vm()
+run_univariate_pipeline(pheno, Ginv, "outputs")      # per-trial spatial models, outliers, diagnostics
+generate_diagnostic_template("outputs/tables", pheno, "outputs/review.xlsx")
+# ... edit review.xlsx (terms, remove_outliers) ...
+run_modified_trials(pheno, "outputs/review.xlsx", Ginv, "outputs")
+met <- run_met_pipeline(pheno, Ginv, "outputs/Final_Model_Summary.xlsx", workspace = "8gb")
 ```
 
-### 3. High-Throughput Phenotyping (HTP)
+Each step returns a per-trial status table and warns about failures rather
+than hiding them. A reviewer modification that removes outliers or changes the
+fixed effects is not AIC-comparable with the original models, so it is
+recorded as an explicit reviewer decision.
 
-Evaluate Vegetation Indices (VIs) predicting Yield using LOCO-CV.
+### 3. Factor analytic selection tools (FAST)
 
 ```r
-vi_results <- evaluate_vi_loco(df, target_trait = "Yield", vi_names = c("NDVI", "NDRE"))
-print(vi_results$Col_Acc) # Column-wise accuracy
+model <- asreml::asreml(yield ~ env, random = ~ fa(env, 2):vm(gen, G), data = met)
+fa <- fa.asreml(model, grm = G)        # G (not its inverse) gives correct reliabilities (r2_g)
+summary(fa)
+rank_genotypes(fa, weight_stability = 1)
+calculate_i_classes(fa)
+plot(fa, type = "fast")                # also "heatmap", "vaf", "biplot", "latent_reg", "cluster"
 ```
 
-### 4. Genomic Selection Validation
-
-Evaluate predictions and dynamically view the results using S3 methods.
+### 4. Genomic selection validation
 
 ```r
-# Evaluate
-gs_res <- evaluate_gs_predictions(model, target_ids, training_ids, target_term = "fa(env, 1):gen")
-
-# Print short summary
-print(gs_res)
-
-# Print detailed metric summaries
-summary(gs_res)
-
-# Visualize combined Breeder's Space plot
-plot(gs_res)
+gs <- evaluate_gs_predictions(model, target_ids, training_ids,
+                              target_term = "fa(env, 2):vm(gen, G.inv)", grm = G)
+gs; summary(gs); plot(gs)
 ```
 
-## Visualization Options
+### 5. High-throughput phenotyping
 
-The `plot()` function supports various types to inspect the `fa_model`:
+```r
+vis <- calculate_vegetation_indices(bands)            # Awesome Spectral Indices formulas
+loco <- evaluate_vi_loco(df, "Yield", c("NDVI", "NDRE"))
+loco$Acc_within                                       # within-column accuracy
+```
 
-| Type | Description |
-|------|-------------|
-| `"fast"` | **Selection**: Overall Performance (OP) vs Stability (RMSD) |
-| `"heatmap"` | **Connectivity**: Genetic Correlation Matrix between sites |
-| `"latent_reg"` | **GxE**: Latent regression showing stability drivers |
-| `"vaf"` | **Quality**: Variance Accounted For (%) per site |
+## Plot types for `fa_model`
+
+| Type | Shows |
+|------|-------|
+| `"fast"` | Overall performance (OP) vs stability (RMSD) |
+| `"heatmap"` | Genetic correlations between environments |
+| `"vaf"` | Variance accounted for per environment |
+| `"biplot"` | Rotated scores and (scaled) loadings |
+| `"latent_reg"` | Reaction norms on a factor's loadings |
+| `"cluster"` | Ward clustering of environments on \(\sqrt{2(1-r)}\) |
 
 ## References
 
-Smith, A. B., & Cullis, B. R. (2018). Plant breeding selection tools built on factor analytic mixed models for multi-environment trial data. _Euphytica_, 214(8).
-Gevartosky, R., Munaro, L. B., & Rutkoski, J. E. (2026). Phenotype imputation using high-throughput phenotyping produces a new secondary trait for further selection modeling. The Plant Phenome Journal, 9, e70081.
+- Smith, A. B., & Cullis, B. R. (2018). Plant breeding selection tools built on factor analytic mixed models for multi-environment trial data. *Euphytica*, 214, 143.
+- Smith, A., Norman, A., Kuchel, H., & Cullis, B. (2021). Plant variety selection using interaction classes derived from factor analytic linear mixed models. *Frontiers in Plant Science*, 12, 737462.
+- Cullis, B. R., Smith, A. B., & Coombes, N. E. (2006). On the design of early generation variety trials with correlated data. *JABES*, 11, 381–393.
+- Montero, D., et al. (2023). A standardized catalogue of spectral indices to advance the use of remote sensing in Earth system research. *Scientific Data*, 10, 197.
+- Gevartosky, R., Munaro, L. B., & Rutkoski, J. E. (2026). Phenotype imputation using high-throughput phenotyping produces a new secondary trait for further selection modeling. *The Plant Phenome Journal*, 9, e70081.

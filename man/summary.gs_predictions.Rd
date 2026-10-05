@@ -7,12 +7,13 @@
 \method{summary}{gs_predictions}(object, ...)
 }
 \arguments{
-\item{object}{An object of class `gs_predictions`.}
+\item{object}{A \code{gs_predictions} object.}
 
-\item{...}{Additional arguments (ignored).}
+\item{...}{Ignored.}
 }
 \value{
-Prints a detailed summary and returns the object invisibly.
+An object of class \code{summary.gs_predictions}: a data frame of
+  cohort means.
 }
 \description{
 Summary Method for Genomic Selection Predictions

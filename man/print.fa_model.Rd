@@ -7,12 +7,12 @@
 \method{print}{fa_model}(x, ...)
 }
 \arguments{
-\item{x}{An object of class `fa_model`.}
+\item{x}{An \code{fa_model}.}
 
-\item{...}{Additional arguments (ignored).}
+\item{...}{Ignored.}
 }
 \value{
-Prints a concise summary and returns the object invisibly.
+\code{x}, invisibly.
 }
 \description{
 Print Method for Factor Analytic Models

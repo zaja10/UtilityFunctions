@@ -2,24 +2,40 @@
 % Please edit documentation in R/analysis_spatial.R
 \name{fit_asreml_comparison}
 \alias{fit_asreml_comparison}
-\title{Fit and Compare Spatial Models}
+\title{Fit and Compare a Spatial Model}
 \usage{
-fit_asreml_comparison(fixed_f, random_f, residual_f, model_name, df)
+fit_asreml_comparison(
+  fixed_f,
+  random_f,
+  residual_f,
+  model_name,
+  df,
+  grm = NULL,
+  env = parent.frame()
+)
 }
 \arguments{
-\item{fixed_f}{Formula for fixed effects}
+\item{fixed_f}{Formula for fixed effects.}
 
-\item{random_f}{Formula for random effects}
+\item{random_f}{Formula for random effects.}
 
-\item{residual_f}{Formula for residual effects}
+\item{residual_f}{Formula for residual effects.}
 
-\item{model_name}{Character string for the model name}
+\item{model_name}{Character string for the model name.}
 
-\item{df}{Dataframe containing the trial data}
+\item{df}{Data frame containing the trial data.}
+
+\item{grm}{Optional relationship matrix bound to the name \code{grm} in
+the formulae.}
+
+\item{env}{Environment in which other objects named in the formulae
+(e.g. a user's \code{G.inv}) are found (default: the caller's).}
 }
 \value{
-A dataframe containing Model name, AIC, LogLik, and Converged status
+A one-row data frame with \code{Model}, \code{AIC}, \code{LogLik},
+  \code{Converged} and \code{Error} (\code{NA} when the fit succeeded).
 }
 \description{
-Fits a specified asreml spatial model and returns its AIC, LogLikelihood, and convergence status.
+Fits one \code{asreml} model and returns its fit statistics. Errors are
+caught and reported in the \code{Error} column rather than aborting.
 }

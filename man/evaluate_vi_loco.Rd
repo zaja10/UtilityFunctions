@@ -13,20 +13,35 @@ evaluate_vi_loco(
 )
 }
 \arguments{
-\item{data}{A dataframe containing the target trait, VI columns, and a spatial 'colNumber' column.}
+\item{data}{A data frame with the target trait, VI columns and a spatial
+column identifier.}
 
-\item{target_trait}{Character. The name of the target trait to predict.}
+\item{target_trait}{Character. The trait to predict.}
 
-\item{vi_names}{Character vector. The names of the VI predictor columns.}
+\item{vi_names}{Character vector. Predictor (VI) columns.}
 
-\item{col_identifier}{Character. The name of the column identifying spatial columns for LOCO (default "colNumber").}
+\item{col_identifier}{Character. Spatial column identifier for LOCO
+(default \code{"colNumber"}).}
 
-\item{method_name}{Character. Label for the method (default "MLR_UAS").}
+\item{method_name}{Character. Label for the method (default \code{"MLR_UAS"}).}
 }
 \value{
-A list containing Global Importance, LOCO Predictions, and Accuracy metrics.
+A list with:
+\describe{
+  \item{\code{Acc}}{Pooled correlation of observed and LOCO predictions.
+    Inflated by between-column differences in means.}
+  \item{\code{Acc_within}}{Correlation after centring both observed and
+    predicted values within column: accuracy for ranking plots within a column.}
+  \item{\code{Importance}}{Global-fit standardised coefficients (absolute
+    value in \code{Importance_Weight}), t, p and variance inflation factors.
+    VIs are typically highly collinear; when \code{VIF > 10} individual
+    coefficients are unstable and should not be read as importance.}
+  \item{\code{Col_Acc}}{Per-column accuracy.}
+  \item{\code{Predictions}}{The input data with \code{Imputed_Target}.}
+}
 }
 \description{
-Evaluates the predictive power of a set of Vegetation Indices (VIs) on a target trait
-using Multiple Linear Regression (MLR) and Leave-One-Column-Out Cross-Validation (LOCO-CV).
+Predicts a target trait from vegetation indices (VIs) by multiple linear
+regression and evaluates it with leave-one-column-out cross-validation
+(each field column is predicted from a model fitted to all other columns).
 }

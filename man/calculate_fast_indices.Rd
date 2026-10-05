@@ -4,16 +4,25 @@
 \alias{calculate_fast_indices}
 \title{Calculate FAST Indices (OP, RMSD, PEV, Reliability)}
 \usage{
-calculate_fast_indices(fa_object, k = NULL)
+calculate_fast_indices(fa_object, k = NULL, g_diag = NULL)
 }
 \arguments{
-\item{fa_object}{An object of class `fa_model` or a list with `loadings` and `scores`.}
+\item{fa_object}{An \code{fa_model} or a list with \code{loadings$rotated},
+\code{scores$rotated} and optionally \code{scores$pev_rotated}.}
 
-\item{k}{Number of factors.}
+\item{k}{Number of factors (default: all).}
+
+\item{g_diag}{Optional named vector of \eqn{g_{ii}} (variance of a
+genotype's scores); defaults to 1 (independent genotypes).}
 }
 \value{
-A dataframe with Genotype, OP, PEV_OP, Reliability, and RMSD.
+Data frame with \code{Genotype}, \code{OP}, \code{PEV_OP},
+  \code{Reliability} (\eqn{r^2_g = 1 - PEV(f_{i1}) / g_{ii}}, the squared
+  accuracy of OP) and \code{RMSD},
+  ordered by decreasing OP.
 }
 \description{
-Calculates "Factor Analytic Selection Tools" indices from a FA Model.
+Overall performance \eqn{OP_i = \bar\lambda_1 f_{i1}} and stability
+\eqn{RMSD_i = \sqrt{\frac{1}{p}\sum_j (\sum_{r \ge 2} \lambda_{jr} f_{ir})^2}}
+from an SVD-rotated FA solution (Smith & Cullis 2018).
 }

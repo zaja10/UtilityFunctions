@@ -16,21 +16,26 @@
 )
 }
 \arguments{
-\item{x}{Object of class `fa_model`.}
+\item{x}{Object of class \code{fa_model}.}
 
-\item{type}{String type of plot: "fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster".}
+\item{type}{Plot type: \code{"fast"}, \code{"heatmap"}, \code{"vaf"},
+\code{"biplot"}, \code{"latent_reg"} or \code{"cluster"}.}
 
-\item{factor}{Integer. Which factor to use for latent regression (default 1).}
+\item{factor}{Integer. Factor for the latent regression (default 1).}
 
 \item{n_label}{Integer. Number of top genotypes to highlight (default 5).}
 
 \item{highlight}{Character vector. Specific genotypes to highlight.}
 
-\item{show_labels}{Logical. If TRUE, adds text labels to highlighted genotypes.}
+\item{show_labels}{Logical. Label highlighted genotypes.}
 
-\item{interactive}{Logical. If TRUE, wraps the ggplot in `plotly::ggplotly()`.}
+\item{interactive}{Logical. Wrap the ggplot in \code{plotly::ggplotly()}.}
 
-\item{...}{Additional arguments passed to specific plot methods.}
+\item{...}{Unused.}
+}
+\value{
+A ggplot (or plotly) object; for \code{"cluster"}, the
+  \code{hclust} object, invisibly, after drawing the dendrogram.
 }
 \description{
 Master Visualization Suite for Factor Analytic Models

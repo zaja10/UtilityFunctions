@@ -4,22 +4,53 @@
 \alias{calculate_genetic_gain}
 \title{Calculate Genetic Gain}
 \usage{
-calculate_genetic_gain(input, ...)
+calculate_genetic_gain(
+  input,
+  selection_percent = 5,
+  accuracy = NULL,
+  cycle_length = 1,
+  varcomp_term = NULL,
+  year_col = "Year",
+  value_col = "Yield",
+  genotype_col = "Genotype",
+  check_list = NULL
+)
 }
 \arguments{
-\item{input}{Either a dataframe (for "Realized") or an `fa_model`/`asreml` object (for "Predicted").}
+\item{input}{A data frame (realized) or an \code{fa_model}/\code{asreml}
+object (predicted).}
 
-\item{...}{arguments handling specifics.
-\describe{
-  \item{Realized}{Requires `year_col` (Year) and `value_col` (Yield/BV).}
-  \item{Predicted}{Requires `selection_percent` (default 5).}
-}}
+\item{selection_percent}{Numeric in (0, 100). Percentage selected (default 5).}
+
+\item{accuracy}{Numeric in (0, 1]. Selection accuracy \eqn{r} (scalar or
+one per group). If \code{NULL}, \eqn{r = 1} is used and a warning is
+raised because the result is then an upper bound.}
+
+\item{cycle_length}{Numeric. Years per breeding cycle (default 1).}
+
+\item{varcomp_term}{Character. For \code{asreml} input, the exact name of
+the genetic variance component.}
+
+\item{year_col, value_col, genotype_col}{Column names for realized gain.}
+
+\item{check_list}{Character vector of check genotypes (realized gain).}
 }
 \value{
-For Realized: A list with slope, R2, and pct_gain.
-For Predicted: A dataframe of potential gain per trait/site.
+Predicted: data frame with \code{Group}, \code{Sigma_G},
+  \code{Intensity}, \code{Accuracy}, \code{Predicted_Gain} (per year).
+  Realized: list with \code{Method}, \code{Slope}, \code{Env_Slope},
+  \code{Pct_Gain_Per_Year} and \code{R2}.
 }
 \description{
-Estimates genetic gain using either "Realized" (Historical Regression) or
-"Predicted" (Breeder's Equation) methods.
+\strong{Predicted} (model input): the breeder's equation
+\eqn{R = i \, r \, \sigma_G / L}, with selection intensity \eqn{i} for the
+top \code{selection_percent}, selection accuracy \eqn{r} and cycle length
+\eqn{L}.
+}
+\details{
+\strong{Realized} (data frame input): the slope of \code{value_col} on
+\code{year_col}. Raw phenotypes confound genetic and environmental trend;
+supply genotype BLUPs against year of first testing, or supply
+\code{check_list}: checks are genetically constant, so their slope
+estimates the environmental trend, which is subtracted.
 }

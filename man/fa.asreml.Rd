@@ -8,32 +8,58 @@ fa.asreml(
   model,
   classify = NULL,
   psi_term = NULL,
-  rotate = "mean",
-  annotation = NULL
+  rotate = "svd",
+  annotation = NULL,
+  grm = NULL
 )
 }
 \arguments{
 \item{model}{A fitted object of class \code{asreml}.}
 
-\item{classify}{Character (Optional). The term to extract. E.g., \code{"fa(Site, 2)"}.
-If NULL, the function attempts to find the first FA/RR term in \code{model$call$random}.}
+\item{classify}{Character (optional). The FA/RR term to extract, e.g.
+\code{"fa(Site, 2):vm(Genotype, Ginv)"}. A unique prefix such as
+\code{"fa(Site, 2)"} is accepted when only one term matches. If
+\code{NULL}, the model must contain exactly one FA/RR term.}
 
-\item{psi_term}{Character (Optional). Specific variance term for RR models.}
+\item{psi_term}{Character (optional). For RR models, the term holding the
+specific variances, e.g. \code{"diag(Site):vm(Genotype, Ginv)"}.}
 
-\item{rotate}{Character or Logical. Rotation strategy. Options:
-\itemize{
-  \item \code{"varimax"} or \code{TRUE}: Standard PCA/SVD rotation (Max Var).
-  \item \code{"mean"}: Rotate Factor 1 to align with the average loading magnitude (Overall Performance).
-  \item \code{FALSE}: Raw solution.
-}}
+\item{rotate}{Rotation: \code{"svd"} (default; principal-component rotation
+with factor 1 oriented so its mean loading is positive, as required by
+FAST) or \code{"none"}. \code{TRUE}/\code{FALSE} map to these. The old
+values \code{"mean"} and \code{"varimax"} are accepted as aliases of
+\code{"svd"} (no varimax rotation was ever performed).}
 
-\item{annotation}{Optional dataframe or named list to annotate sites immediately.
-Passed to \code{\link{annotate_model}}.}
+\item{annotation}{Optional data frame or named list passed to
+\code{\link{annotate_model}}.}
+
+\item{grm}{Optional relationship matrix \strong{G} (not its inverse) used
+in the model, or a named vector of its diagonal. Needed for correct
+reliabilities (\eqn{r^2_g}) with genomic (\code{vm()}) models because the variance of a
+genotype's factor score is \eqn{g_{ii}}, not 1.}
 }
 \value{
-An object of class \code{fa_model} with 'loadings', 'scores', 'fast', and 'variance'.
+An object of class \code{fa_model} with elements \code{loadings},
+  \code{scores}, \code{var_comp}, \code{matrices}, \code{fast} and
+  \code{meta}.
 }
 \description{
-A universal parser for ASReml-R Factor Analytic (FA) and Reduced Rank (RR) models.
-Implements the "Smith & Cullis" Factor Analytic Selection Tools (FAST) framework.
+A parser for ASReml-R factor analytic (\code{fa}) and reduced rank
+(\code{rr}) terms implementing the factor analytic selection tools (FAST)
+of Smith & Cullis (2018).
+}
+\details{
+Prediction error variances (PEVs) of rotated scores are computed from the
+standard errors of the raw scores, \eqn{\sum_r v_{r1}^2 \mathrm{PEV}(f_{ir})}.
+This ignores prediction error covariances between a genotype's raw scores,
+which ASReml does not report through \code{summary(coef = TRUE)}; the
+resulting PEV and reliability are approximations.
+
+\code{meta$var_explained} is the percentage of the total genetic variance
+(\eqn{\mathrm{tr}(G)}) attributable to each rotated factor.
+}
+\references{
+Smith, A. B. & Cullis, B. R. (2018). Plant breeding selection
+  tools built on factor analytic mixed models for multi-environment trial
+  data. \emph{Euphytica} 214, 143.
 }

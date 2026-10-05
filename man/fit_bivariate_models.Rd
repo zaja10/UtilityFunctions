@@ -14,34 +14,49 @@ fit_bivariate_models(
   model_name = "Biv_Model",
   trial_name = "Trial",
   genotype_term = "Trait:vm(Genotype, G.inv)",
-  spatial_term = "Trait:units"
+  spatial_term = "Trait:units",
+  grm = NULL
 )
 }
 \arguments{
-\item{data}{Dataframe in long format with a `Trait` column and a `Value_Scaled` column.}
+\item{data}{Long-format data frame with a \code{Trait} column and a
+response column (default \code{Value_Scaled}).}
 
-\item{primary_trait}{Character. Name of the primary trait (e.g., "Yield").}
+\item{primary_trait}{Character. Primary trait (e.g. \code{"Yield"}).}
 
-\item{secondary_trait}{Character. Name of the secondary trait.}
+\item{secondary_trait}{Character. Secondary trait.}
 
-\item{fixed_f}{Formula. Fixed effects (usually `Value_Scaled ~ Trait`).}
+\item{fixed_f}{Formula. Fixed effects (default \code{Value_Scaled ~ Trait}).}
 
-\item{rand_f}{Formula. Random effects (e.g., `~ us(Trait):vm(Genotype, G.inv)`).}
+\item{rand_f}{Formula. Random effects, e.g.
+\code{~ us(Trait):vm(Genotype, G.inv)}.}
 
-\item{res_f}{Formula. Residual structure (e.g., `~ dsum(~ ar1(col):ar1(row) | Trait)`).}
+\item{res_f}{Formula. Residual, e.g.
+\code{~ dsum(~ ar1(col):ar1(row) | Trait)} or \code{~ units:us(Trait)}.}
 
-\item{model_name}{Character. Name of the model.}
+\item{model_name}{Character. Model label.}
 
-\item{trial_name}{Character. Name of the trial.}
+\item{trial_name}{Character. Trial label.}
 
-\item{genotype_term}{Character. Exact name of genotype term in `vparameters` for covariance extraction.}
+\item{genotype_term}{Character. Variance-component prefix of the genetic
+term as ASReml names it, e.g. \code{"Trait:vm(Genotype, G.inv)"} for
+\code{us(Trait):vm(Genotype, G.inv)}.}
 
-\item{spatial_term}{Character. Optional term name for spatial units.}
+\item{spatial_term}{Character. Prefix of a trait-specific nugget term
+(e.g. \code{"Trait:units"}), or \code{NULL}.}
+
+\item{grm}{Optional relationship matrix bound to the name \code{grm} in the
+formulas.}
 }
 \value{
-A one-row dataframe with extracted variances and correlations.
+A one-row data frame with numeric columns \code{rG}, \code{rE},
+  \code{rR}, \code{Vg}, \code{Ve}, \code{Vr}, \code{h2}, \code{PEV},
+  \code{vBLUP}, \code{Gen_Reliability}, \code{Acc}, \code{LogLik}, \code{Converged},
+  plus \code{residual} (formula text) and \code{Error} (\code{NA} on success).
 }
 \description{
-Fits a bivariate ASReml model and extracts genetic and environmental 
-correlations, along with heritability for the primary trait.
+Fits a bivariate model for a primary and a secondary trait and extracts
+the genetic, residual and nugget correlations together with the primary
+trait's heritability, prediction error variance, generalised reliability
+(\eqn{\bar r^2_g}; see \code{\link{extract_variance_components}}) and accuracy.
 }

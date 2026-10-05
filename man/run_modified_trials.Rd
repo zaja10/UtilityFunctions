@@ -4,20 +4,34 @@
 \alias{run_modified_trials}
 \title{Run Modified Trials}
 \usage{
-run_modified_trials(data, template_path, grm, output_dir = "outputs")
+run_modified_trials(
+  data,
+  template_path,
+  grm,
+  output_dir = "outputs",
+  trait = "grain_yield"
+)
 }
 \arguments{
-\item{data}{Processed dataframe containing phenotype data}
+\item{data}{Phenotype data frame (see \code{\link{run_univariate_pipeline}}).}
 
-\item{template_path}{Path to the human-reviewed Diagnostic Review Template Excel file}
+\item{template_path}{Path to the reviewed template (Excel).}
 
-\item{grm}{Genomic relationship matrix inverse}
+\item{grm}{Genomic relationship matrix inverse.}
 
-\item{output_dir}{Path to the output directory (default "outputs")}
+\item{output_dir}{Output directory (default \code{"outputs"}).}
+
+\item{trait}{Character. Trait column (default \code{"grain_yield"}).}
 }
 \value{
-NULL (Updates existing output files and creates final summary)
+Invisibly, a per-trial status data frame.
 }
 \description{
-Re-evaluates trials based on the human-modified template, optionally masking outliers and refitting custom formulas.
+Refits each trial whose template row differs from its selected model
+("MOD"). A MOD that only changes random/residual structure is compared to
+the base models by AIC. A MOD that removes outliers or changes the fixed
+effects is fitted to different data or a different fixed model, so its
+REML likelihood is not comparable; it is recorded with
+\code{Comparable = FALSE} and, if it converged, adopted as an explicit
+reviewer decision. A final summary workbook is then written.
 }

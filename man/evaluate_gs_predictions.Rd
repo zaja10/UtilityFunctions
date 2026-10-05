@@ -13,7 +13,8 @@ evaluate_gs_predictions(
   grm = NULL,
   output_prefix = "GS_Predictions",
   top_pct = 0.95,
-  save_output = TRUE
+  save_output = FALSE,
+  weight_stability = 1
 )
 }
 \arguments{
@@ -23,31 +24,35 @@ evaluate_gs_predictions(
 
 \item{training_ids}{Character vector. IDs of the training (phenotyped) lines.}
 
-\item{target_term}{Character. The base random term to extract from the ASReml model
-(e.g., \code{"fa(studyName, 2):vm(gkeep, G.inv)"}).}
+\item{target_term}{Character. The FA term, e.g.
+\code{"fa(studyName, 2):vm(gkeep, G.inv)"} (a trailing \code{_CompN} is
+ignored).}
 
-\item{g_inv}{Optional. The inverse Genomic Relationship Matrix (GRM) used in the model,
-used for diagnosing missing targets. Expected to have dimnames corresponding to IDs.}
+\item{g_inv}{Optional. The inverse GRM used in the model; only used to
+diagnose target IDs missing from the predictions.}
 
-\item{grm}{Optional. The Genomic Relationship Matrix (GRM). If provided, it is used to calculate
-Genetic Relatedness (row means) for plotting.}
+\item{grm}{Optional. The GRM \strong{G}. Used for reliabilities
+(\eqn{r^2_g = 1 - PEV/g_{ii}}) and target-to-training relatedness.}
 
-\item{output_prefix}{Character. Prefix for the output CSV and PDF files. Default \code{"GS_Predictions"}.}
+\item{output_prefix}{Character. Prefix for output files.}
 
-\item{top_pct}{Numeric. The quantile threshold for highlighting top candidates (e.g., 0.95 for top 5 percent).}
+\item{top_pct}{Numeric. Quantile of target OP marked on the selection plot
+(default 0.95).}
 
-\item{save_output}{Logical. Whether to save the CSV and PDF outputs. Default \code{TRUE}.}
+\item{save_output}{Logical. Write \code{<prefix>_BLUPS.csv} and
+\code{<prefix>_Figure.pdf} (default \code{FALSE}).}
+
+\item{weight_stability}{Numeric. Penalty on RMSD in the selection index
+\eqn{OP - b \cdot RMSD} (default 1; see \code{\link{rank_genotypes}}).}
 }
 \value{
-A list containing the following elements:
-* \code{blups}: A dataframe of scaled GEBVs, PEVs, Reliability, and Stability for all lines.
-* \code{missing_targets}: A character vector of target IDs that were not found in the model.
-* \code{plots}: A combined \code{patchwork} plot object.
+An object of class \code{gs_predictions}: a list with \code{blups}
+  (training and target lines), \code{missing_targets}, \code{plots}
+  (a patchwork figure) and \code{fa} (the \code{fa_model}).
 }
 \description{
-Extracts latent scores and prediction error variances (PEVs) from a fitted
-ASReml factor analytic (FA) model. Following the FAST framework (Smith & Cullis, 2018),
-this function applies a Principal Component (SVD) rotation to the raw FA parameters.
-Overall Performance (OP) is defined by the rotated 1st Factor, while Stability (RMSD)
-is calculated from the higher-order rotated factors (k >= 2) representing crossover GxE.
+Extracts the FA solution with \code{\link{fa.asreml}} (SVD rotation, FAST
+indices of Smith & Cullis 2018), labels genotypes as training or target,
+computes a selection index and, optionally, target-to-training genomic
+relatedness, and assembles diagnostic plots.
 }

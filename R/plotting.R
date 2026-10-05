@@ -1,19 +1,24 @@
 #' Default Checks
 #'
-#' Standard check genotypes for plots.
+#' Check varieties from the author's breeding program. Kept for convenience
+#' (e.g. \code{plot_trend(..., checks = DEFAULT_CHECKS)}); no function uses
+#' them by default.
 #' @export
 DEFAULT_CHECKS <- c("17-8930", "US16-IL-063-063", "25R76", "AgriMAXX 490", "07-19334", "AgriMAXX503")
 
 #' Master Visualization Suite for Factor Analytic Models
 #'
-#' @param x Object of class `fa_model`.
-#' @param type String type of plot: "fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster".
-#' @param factor Integer. Which factor to use for latent regression (default 1).
+#' @param x Object of class \code{fa_model}.
+#' @param type Plot type: \code{"fast"}, \code{"heatmap"}, \code{"vaf"},
+#'   \code{"biplot"}, \code{"latent_reg"} or \code{"cluster"}.
+#' @param factor Integer. Factor for the latent regression (default 1).
 #' @param n_label Integer. Number of top genotypes to highlight (default 5).
 #' @param highlight Character vector. Specific genotypes to highlight.
-#' @param show_labels Logical. If TRUE, adds text labels to highlighted genotypes.
-#' @param interactive Logical. If TRUE, wraps the ggplot in `plotly::ggplotly()`.
-#' @param ... Additional arguments passed to specific plot methods.
+#' @param show_labels Logical. Label highlighted genotypes.
+#' @param interactive Logical. Wrap the ggplot in \code{plotly::ggplotly()}.
+#' @param ... Unused.
+#' @return A ggplot (or plotly) object; for \code{"cluster"}, the
+#'   \code{hclust} object, invisibly, after drawing the dendrogram.
 #' @export
 plot.fa_model <- function(x,
                           type = c("fast", "heatmap", "vaf", "biplot", "latent_reg", "cluster"),
@@ -24,117 +29,117 @@ plot.fa_model <- function(x,
                           interactive = FALSE,
                           ...) {
   type <- match.arg(type)
+  if (type == "cluster") {
+    return(plot_cluster(x))
+  }
 
   p <- switch(type,
-    "fast"       = .plot_fast(x, n_label, highlight, show_labels),
-    "heatmap"    = .plot_heat(x),
-    "vaf"        = .plot_vaf(x),
-    "biplot"     = .plot_biplot(x, n_label, highlight, show_labels),
-    "latent_reg" = .plot_latent_reg(x, factor, n_label, highlight),
-    "cluster"    = .plot_cluster(x)
+    "fast"       = plot_fast(x, n_label, highlight, show_labels),
+    "heatmap"    = plot_heat(x),
+    "vaf"        = plot_vaf(x),
+    "biplot"     = plot_biplot(x, n_label, highlight, show_labels),
+    "latent_reg" = plot_latent_reg(x, factor, n_label, highlight)
   )
 
-  if (interactive && type != "cluster") {
+  if (interactive) {
     if (requireNamespace("plotly", quietly = TRUE)) {
       p <- plotly::ggplotly(p)
     } else {
-      warning("The 'plotly' package is required for interactive plots. Returning static plot.")
+      cli::cli_warn("Package {.pkg plotly} is required for interactive plots; returning a static plot.")
     }
   }
-  return(p)
+  p
 }
 
 #' Plot Trends (Phenotypic or Genetic)
 #'
-#' Visualizes data over time (e.g., Year).
 #' \itemize{
-#'   \item "phenotypic": Boxplots + Regression (Rate of Change).
-#'   \item "genetic": Scatterplot of BLUPs + Check highlighting.
+#'   \item \code{"phenotypic"}: boxplots per year with the regression line of
+#'     the trait on (numeric) year, so unequally spaced years are handled.
+#'   \item \code{"genetic"}: scatterplot of genetic values with regression and
+#'     optional check highlighting.
 #' }
 #'
-#' @param data Dataframe.
-#' @param mode String. "phenotypic" or "genetic".
-#' @param x String. X-axis column (Year).
-#' @param y String. Y-axis column (Yield or BLUP).
-#' @param checks Character vector. Names of checks to highlight (only for genetic mode).
+#' @param data Data frame.
+#' @param mode \code{"phenotypic"} or \code{"genetic"}.
+#' @param x X-axis column (numeric year).
+#' @param y Y-axis column.
+#' @param checks Character vector of checks to highlight (genetic mode).
+#' @param genotype_col Genotype column used for check highlighting.
+#' @return A ggplot object.
 #' @export
-plot_trend <- function(data, mode = "phenotypic", x = "Year", y = "Yield", checks = DEFAULT_CHECKS) {
+plot_trend <- function(data, mode = c("phenotypic", "genetic"), x = "Year", y = "Yield",
+                       checks = NULL, genotype_col = "Genotype") {
+  mode <- match.arg(mode)
+  data[[x]] <- suppressWarnings(as.numeric(as.character(data[[x]])))
+  if (all(is.na(data[[x]]))) cli::cli_abort("Column {.val {x}} must be numeric (e.g. year).")
+
   if (mode == "phenotypic") {
-    p <- ggplot2::ggplot(data, ggplot2::aes(x = factor(.data[[x]]), y = .data[[y]])) +
-      ggplot2::geom_boxplot(fill = "lightgreen", alpha = 0.6, outlier.alpha = 0.5) +
-      ggplot2::geom_smooth(method = "lm", ggplot2::aes(group = 1), color = "red", se = FALSE) +
-      ggplot2::labs(title = paste("Phenotypic Trend:", y, "over", x), x = x, y = y) +
-      theme_genetics()
-    return(p)
-  } else if (mode == "genetic") {
-    p <- ggplot2::ggplot(data, ggplot2::aes(x = .data[[x]], y = .data[[y]])) +
-      ggplot2::geom_point(color = "grey", alpha = 0.5) +
-      ggplot2::geom_smooth(method = "lm", color = "blue", se = TRUE, alpha = 0.2) +
-      ggplot2::labs(title = paste("Genetic Trend:", y, "over", x), x = x, y = "Genetic Value") +
-      theme_genetics()
-
-    if (!is.null(checks)) {
-      check_data <- data[data$Genotype %in% checks, ]
-      if (nrow(check_data) > 0) {
-        p <- p +
-          ggplot2::geom_point(data = check_data, color = "red", shape = 17, size = 3)
-
-        # Use ggrepel to prevent labels from overlapping
-        if (requireNamespace("ggrepel", quietly = TRUE)) {
-          p <- p + ggrepel::geom_text_repel(
-            data = check_data, ggplot2::aes(label = Genotype),
-            color = "darkred", box.padding = 0.5
-          )
-        } else {
-          p <- p + ggplot2::geom_text(
-            data = check_data, ggplot2::aes(label = Genotype),
-            vjust = -1, color = "darkred"
-          )
-        }
-      }
-    }
-    return(p)
-  } else {
-    stop("Unknown mode. Use 'phenotypic' or 'genetic'.")
+    return(
+      ggplot2::ggplot(data, ggplot2::aes(x = .data[[x]], y = .data[[y]])) +
+        ggplot2::geom_boxplot(ggplot2::aes(group = .data[[x]]), fill = "lightgreen", alpha = 0.6, outlier.alpha = 0.5) +
+        ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = "red", se = FALSE) +
+        ggplot2::labs(title = paste("Phenotypic Trend:", y, "over", x), x = x, y = y) +
+        theme_genetics()
+    )
   }
+
+  p <- ggplot2::ggplot(data, ggplot2::aes(x = .data[[x]], y = .data[[y]])) +
+    ggplot2::geom_point(color = "grey", alpha = 0.5) +
+    ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = "blue", se = TRUE, alpha = 0.2) +
+    ggplot2::labs(title = paste("Genetic Trend:", y, "over", x), x = x, y = "Genetic Value") +
+    theme_genetics()
+
+  if (!is.null(checks)) {
+    if (!genotype_col %in% names(data)) cli::cli_abort("Column {.val {genotype_col}} not found.")
+    check_data <- data[data[[genotype_col]] %in% checks, , drop = FALSE]
+    if (nrow(check_data) > 0) {
+      p <- p +
+        ggplot2::geom_point(data = check_data, color = "red", shape = 17, size = 3) +
+        ggrepel::geom_text_repel(
+          data = check_data, ggplot2::aes(label = .data[[genotype_col]]),
+          color = "darkred", box.padding = 0.5
+        )
+    }
+  }
+  p
 }
 
 #' Plot Spatial Map
 #'
-#' Visualizes a field trial as a heatmap.
-#' Wraps ASReml residuals or raw data.
+#' Draws a field trial as a heatmap of raw values or of model residuals.
 #'
-#' @param input Either a dataframe or `asreml` object.
-#' @param row Colname for Row.
-#' @param col Colname for Column.
-#' @param fill Colname for value to plot. If input is model, "Residuals" is used.
+#' @param input A data frame, or an \code{asreml} model.
+#' @param row Row column name.
+#' @param col Column column name.
+#' @param fill Column to plot (data frame input).
+#' @param data For \code{asreml} input: the data frame the model was fitted
+#'   to, in the same row order. If \code{NULL}, the data named in the model
+#'   call is looked up.
+#' @return A ggplot object.
 #' @export
-plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
+plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield", data = NULL) {
   if (inherits(input, "asreml")) {
-    if (is.null(input$data)) {
-      stop("ASReml object does not contain data slot. Pass dataframe directly.")
+    df <- data %||% tryCatch(eval(input$call$data, parent.frame()), error = function(e) NULL)
+    if (is.null(df)) cli::cli_abort("Supply {.arg data}: the data frame the model was fitted to.")
+    resids <- stats::resid(input)
+    if (length(resids) != nrow(df)) {
+      cli::cli_abort("{length(resids)} residuals but {nrow(df)} data rows; fit with {.code na.action = na.method(y = 'include')}.")
     }
-    df <- input$data
-    resids <- resid(input)
-
-    # Ensure dimensions match (sometimes missing values are dropped from residuals)
-    if (length(resids) == nrow(df)) {
-      df$PlotValue <- resids
-    } else {
-      stop("Residuals length does not match data length. Cannot map spatially.")
-    }
+    df$PlotValue <- as.numeric(resids)
     title <- "Spatial Residuals"
   } else {
     df <- input
+    if (!fill %in% names(df)) cli::cli_abort("Column {.val {fill}} not found.")
     df$PlotValue <- df[[fill]]
     title <- paste("Spatial Map:", fill)
   }
 
   if (!all(c(row, col) %in% names(df))) {
-    stop(paste("Spatial columns not found. Expected:", row, col, "Found:", paste(names(df), collapse = ", ")))
+    cli::cli_abort("Spatial columns {.val {c(row, col)}} not found.")
   }
 
-  ggplot2::ggplot(df, ggplot2::aes(x = .data[[col]], y = .data[[row]], fill = PlotValue)) +
+  ggplot2::ggplot(df, ggplot2::aes(x = .data[[col]], y = .data[[row]], fill = .data$PlotValue)) +
     ggplot2::geom_tile(color = "white", linewidth = 0.1) +
     ggplot2::scale_fill_distiller(palette = "Spectral", na.value = "grey90") +
     ggplot2::coord_fixed() +
@@ -142,89 +147,78 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
     theme_genetics()
 }
 
-# -------------------------------------------------------------------------
-# Internal Implementations for plot.fa_model
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Internal implementations for plot.fa_model
+# -----------------------------------------------------------------------------
 
-# The updated internal FAST plot function WITH the show_labels argument
-.plot_fast <- function(x, n, h, show_labels) {
-  if (is.null(x$fast)) stop("No FAST data available.")
-  df <- x$fast
-  df <- df[order(df$OP, decreasing = TRUE), ]
+type_levels <- c("Highlight", "Top Candidate", "Other")
+type_colours <- c("Highlight" = "#e74c3c", "Top Candidate" = "#3498db", "Other" = "grey80")
 
-  top_gens <- head(df$Genotype, n)
-  df$Type <- "Other"
-  df$Type[df$Genotype %in% top_gens] <- "Top Candidate"
-  if (!is.null(h)) df$Type[df$Genotype %in% h] <- "Highlight"
-
-  df$Type <- factor(df$Type, levels = c("Highlight", "Top Candidate", "Other"))
-  mean_rmsd <- mean(df$RMSD, na.rm = TRUE)
-
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = RMSD, y = OP)) +
-    ggplot2::geom_vline(xintercept = mean_rmsd, linetype = "dashed", color = "grey50") +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-    ggplot2::geom_point(ggplot2::aes(fill = Type, size = Type, shape = Type), color = "black", alpha = 0.8) +
-    ggplot2::scale_fill_manual(values = c("Highlight" = "#e74c3c", "Top Candidate" = "#3498db", "Other" = "grey90")) +
-    ggplot2::scale_shape_manual(values = c("Highlight" = 23, "Top Candidate" = 21, "Other" = 21)) +
-    ggplot2::scale_size_manual(values = c("Highlight" = 3.5, "Top Candidate" = 3, "Other" = 2)) +
-    ggplot2::labs(x = "Crossover GxE (Stability RMSD)", y = "Overall Performance (OP)", title = "FAST Selection Space") +
-    theme_genetics() +
-    ggplot2::theme(legend.position = "bottom", legend.title = ggplot2::element_blank())
-
-  # Toggle for text labels
-  if (show_labels && requireNamespace("ggrepel", quietly = TRUE)) {
-    labels_df <- df[df$Type != "Other", ]
-    if (nrow(labels_df) > 0) {
-      p <- p + ggrepel::geom_label_repel(
-        data = labels_df, ggplot2::aes(label = Genotype),
-        size = 3, fontface = "bold", box.padding = 0.5, show.legend = FALSE
-      )
-    }
-  }
-
-  return(p)
+label_types <- function(ids, fast, n, highlight) {
+  type <- rep("Other", length(ids))
+  if (!is.null(fast)) type[ids %in% utils::head(fast$Genotype[order(fast$OP, decreasing = TRUE)], n)] <- "Top Candidate"
+  if (!is.null(highlight)) type[ids %in% highlight] <- "Highlight"
+  factor(type, levels = type_levels)
 }
 
-.plot_heat <- function(x) {
-  cor_mat <- x$matrices$Cor
-  if (is.null(cor_mat)) stop("No Correlation matrix available in fa_model object.")
+plot_fast <- function(x, n, h, show_labels) {
+  if (is.null(x$fast)) cli::cli_abort("No FAST indices available (scores missing or rotation not SVD).")
+  df <- x$fast
+  df$Type <- label_types(df$Genotype, df, n, h)
 
-  grp_name <- x$meta$group
-  r_names <- rownames(cor_mat)
-  c_names <- colnames(cor_mat)
-
-  df_melt <- expand.grid(Var1 = r_names, Var2 = c_names, stringsAsFactors = TRUE)
-  df_melt$Correlation <- as.vector(cor_mat)
-  df_melt$Var1 <- factor(df_melt$Var1, levels = rev(r_names)) # Reverse to read top-to-bottom
-  df_melt$Var2 <- factor(df_melt$Var2, levels = c_names)
-
-  ggplot2::ggplot(df_melt, ggplot2::aes(x = Var2, y = Var1, fill = Correlation)) +
-    ggplot2::geom_tile(color = "white") +
-    ggplot2::geom_text(ggplot2::aes(label = sprintf("%.2f", Correlation)), size = 2.5, color = "black") +
-    ggplot2::scale_fill_distiller(palette = "RdYlGn", limit = c(-1, 1), direction = 1) +
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$RMSD, y = .data$OP)) +
+    ggplot2::geom_vline(xintercept = mean(df$RMSD, na.rm = TRUE), linetype = "dashed", color = "grey50") +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+    ggplot2::geom_point(ggplot2::aes(fill = .data$Type, size = .data$Type, shape = .data$Type), color = "black", alpha = 0.8) +
+    ggplot2::scale_fill_manual(values = type_colours, drop = FALSE) +
+    ggplot2::scale_shape_manual(values = c("Highlight" = 23, "Top Candidate" = 21, "Other" = 21), drop = FALSE) +
+    ggplot2::scale_size_manual(values = c("Highlight" = 3.5, "Top Candidate" = 3, "Other" = 2), drop = FALSE) +
+    ggplot2::labs(x = "Crossover GxE (Stability RMSD)", y = "Overall Performance (OP)", title = "FAST Selection Space") +
     theme_genetics() +
-    ggplot2::labs(x = NULL, y = NULL, title = paste("Genetic Correlation:", grp_name)) +
+    ggplot2::theme(legend.title = ggplot2::element_blank())
+
+  lab <- df[df$Type != "Other", , drop = FALSE]
+  if (show_labels && nrow(lab) > 0) {
+    p <- p + ggrepel::geom_label_repel(
+      data = lab, ggplot2::aes(label = .data$Genotype),
+      size = 3, fontface = "bold", box.padding = 0.5, show.legend = FALSE
+    )
+  }
+  p
+}
+
+plot_heat <- function(x) {
+  cor_mat <- x$matrices$Cor
+  if (is.null(cor_mat)) cli::cli_abort("No correlation matrix available in the {.cls fa_model}.")
+  r_names <- rownames(cor_mat)
+  df <- expand.grid(Var1 = r_names, Var2 = colnames(cor_mat), stringsAsFactors = FALSE)
+  df$Correlation <- as.vector(cor_mat)
+  df$Var1 <- factor(df$Var1, levels = rev(r_names))
+  df$Var2 <- factor(df$Var2, levels = colnames(cor_mat))
+
+  ggplot2::ggplot(df, ggplot2::aes(x = .data$Var2, y = .data$Var1, fill = .data$Correlation)) +
+    ggplot2::geom_tile(color = "white") +
+    ggplot2::geom_text(ggplot2::aes(label = sprintf("%.2f", .data$Correlation)), size = 2.5) +
+    ggplot2::scale_fill_distiller(palette = "RdYlGn", limits = c(-1, 1), direction = 1) +
+    ggplot2::labs(x = NULL, y = NULL, title = paste("Genetic Correlation:", x$meta$group)) +
+    theme_genetics() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
 
-.plot_vaf <- function(x) {
-  if (is.null(x$var_comp$vaf)) stop("VAF data not available.")
-  vaf_df <- x$var_comp$vaf
+plot_vaf <- function(x) {
+  vaf <- x$var_comp$vaf
+  if (is.null(vaf) || !all(c("Group", "Total_VAF") %in% names(vaf))) {
+    cli::cli_abort("VAF table with {.field Group} and {.field Total_VAF} columns is required.")
+  }
+  fac_cols <- grep("^VAF_", names(vaf), value = TRUE)
+  long <- do.call(rbind, c(
+    lapply(fac_cols, function(cn) data.frame(Group = vaf$Group, Component = sub("^VAF_", "", cn), Percentage = vaf[[cn]])),
+    list(data.frame(Group = vaf$Group, Component = "Specific", Percentage = pmax(0, 100 - vaf$Total_VAF)))
+  ))
+  long$Group <- factor(long$Group, levels = vaf$Group[order(vaf[[fac_cols[1]]], decreasing = TRUE)])
+  long$Component <- factor(long$Component, levels = c(sub("^VAF_", "", fac_cols), "Specific"))
 
-  vaf_df$Specific <- pmax(0, 100 - vaf_df$Total_VAF)
-  vaf_df$Total_VAF <- NULL
-
-  long_vaf <- reshape(vaf_df,
-    varying = setdiff(names(vaf_df), "Group"),
-    v.names = "Percentage", timevar = "Component",
-    times = setdiff(names(vaf_df), "Group"), direction = "long"
-  )
-
-  long_vaf$Component <- gsub("VAF_", "", long_vaf$Component)
-  group_order <- vaf_df$Group[order(vaf_df$VAF_Fac1, decreasing = TRUE)]
-  long_vaf$Group <- factor(long_vaf$Group, levels = group_order)
-
-  ggplot2::ggplot(long_vaf, ggplot2::aes(x = Group, y = Percentage, fill = Component)) +
+  ggplot2::ggplot(long, ggplot2::aes(x = .data$Group, y = .data$Percentage, fill = .data$Component)) +
     ggplot2::geom_col(color = "black", linewidth = 0.2) +
     ggplot2::scale_y_continuous(expand = c(0, 0)) +
     ggplot2::labs(title = "Variance Accounted For (VAF) by Environment", x = "Environment", y = "Genetic Variance (%)") +
@@ -232,120 +226,92 @@ plot_spatial <- function(input, row = "Row", col = "Column", fill = "Yield") {
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
 
-.plot_biplot <- function(x, n, h, show_labels) {
-  if (is.null(x$scores$rotated) || x$meta$k < 2) {
-    stop("Biplot requires at least 2 factors and extracted scores.")
-  }
+plot_biplot <- function(x, n, h, show_labels) {
+  if (is.null(x$scores$rotated) || x$meta$k < 2) cli::cli_abort("A biplot requires at least 2 factors and extracted scores.")
 
-  loadings <- as.data.frame(x$loadings$rotated[, 1:2])
-  colnames(loadings) <- c("PC1", "PC2")
-  loadings$Environment <- rownames(loadings)
+  scores <- data.frame(PC1 = x$scores$rotated[, 1], PC2 = x$scores$rotated[, 2], Genotype = rownames(x$scores$rotated))
+  scores$Type <- label_types(scores$Genotype, x$fast, n, h)
 
-  scores <- as.data.frame(x$scores$rotated[, 1:2])
-  colnames(scores) <- c("PC1", "PC2")
-  scores$Genotype <- rownames(scores)
+  L <- x$loadings$rotated[, 1:2, drop = FALSE]
+  # Loadings and scores live on different scales: stretch loadings to the
+  # score cloud and say so on the plot.
+  s <- 0.8 * max(abs(scores[, 1:2])) / max(abs(L))
+  loadings <- data.frame(PC1 = L[, 1] * s, PC2 = L[, 2] * s, Environment = rownames(L))
 
-  scores$Type <- "Other"
-  if (!is.null(x$fast)) {
-    top_gens <- head(x$fast$Genotype[order(x$fast$OP, decreasing = TRUE)], n)
-    scores$Type[scores$Genotype %in% top_gens] <- "Top Candidate"
-  }
-  if (!is.null(h)) scores$Type[scores$Genotype %in% h] <- "Highlight"
-  scores$Type <- factor(scores$Type, levels = c("Highlight", "Top Candidate", "Other"))
+  ve <- x$meta$var_explained
+  ax <- function(i) if (length(ve) >= i && is.finite(ve[i])) sprintf("Rotated factor %d (%.1f%% of genetic variance)", i, ve[i]) else sprintf("Rotated factor %d", i)
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey80") +
     ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "grey80") +
-    ggplot2::geom_point(data = scores, ggplot2::aes(x = PC1, y = PC2, color = Type, size = Type, alpha = Type)) +
-    ggplot2::scale_color_manual(values = c("Highlight" = "#e74c3c", "Top Candidate" = "#3498db", "Other" = "grey70")) +
-    ggplot2::scale_size_manual(values = c("Highlight" = 3, "Top Candidate" = 2.5, "Other" = 1.5)) +
-    ggplot2::scale_alpha_manual(values = c("Highlight" = 1, "Top Candidate" = 1, "Other" = 0.5)) +
+    ggplot2::geom_point(data = scores, ggplot2::aes(x = .data$PC1, y = .data$PC2, color = .data$Type, size = .data$Type, alpha = .data$Type)) +
+    ggplot2::scale_color_manual(values = type_colours, drop = FALSE) +
+    ggplot2::scale_size_manual(values = c("Highlight" = 3, "Top Candidate" = 2.5, "Other" = 1.5), drop = FALSE) +
+    ggplot2::scale_alpha_manual(values = c("Highlight" = 1, "Top Candidate" = 1, "Other" = 0.5), drop = FALSE) +
     ggplot2::geom_segment(
-      data = loadings, ggplot2::aes(x = 0, y = 0, xend = PC1, yend = PC2),
+      data = loadings, ggplot2::aes(x = 0, y = 0, xend = .data$PC1, yend = .data$PC2),
       arrow = ggplot2::arrow(length = ggplot2::unit(0.2, "cm")), color = "darkblue", linewidth = 0.8
-    )
-
-  if (requireNamespace("ggrepel", quietly = TRUE)) {
-    p <- p + ggrepel::geom_text_repel(
-      data = loadings, ggplot2::aes(x = PC1, y = PC2, label = Environment),
+    ) +
+    ggrepel::geom_text_repel(
+      data = loadings, ggplot2::aes(x = .data$PC1, y = .data$PC2, label = .data$Environment),
       color = "darkblue", size = 3, fontface = "bold"
     )
-  } else {
-    p <- p + ggplot2::geom_text(
-      data = loadings, ggplot2::aes(x = PC1 * 1.1, y = PC2 * 1.1, label = Environment),
-      color = "darkblue", size = 3
-    )
-  }
 
-  if (show_labels && requireNamespace("ggrepel", quietly = TRUE)) {
-    labels_df <- scores[scores$Type != "Other", ]
-    if (nrow(labels_df) > 0) {
-      p <- p + ggrepel::geom_label_repel(
-        data = labels_df, ggplot2::aes(x = PC1, y = PC2, label = Genotype),
-        size = 3, fontface = "bold", box.padding = 0.5, show.legend = FALSE
-      )
-    }
+  lab <- scores[scores$Type != "Other", , drop = FALSE]
+  if (show_labels && nrow(lab) > 0) {
+    p <- p + ggrepel::geom_label_repel(
+      data = lab, ggplot2::aes(x = .data$PC1, y = .data$PC2, label = .data$Genotype),
+      size = 3, fontface = "bold", box.padding = 0.5, show.legend = FALSE
+    )
   }
 
   p + ggplot2::labs(
-    title = "Factor Analytic Biplot",
-    x = paste0("Rotated Factor 1 (", round(x$meta$var_explained[1], 1), "%)"),
-    y = paste0("Rotated Factor 2 (", round(x$meta$var_explained[2], 1), "%)")
+    title = "Factor Analytic Biplot", x = ax(1), y = ax(2),
+    caption = sprintf("Environment loadings scaled by %.3g to match genotype scores", s)
   ) +
-    theme_genetics() + ggplot2::theme(legend.position = "bottom", legend.title = ggplot2::element_blank())
+    theme_genetics() + ggplot2::theme(legend.title = ggplot2::element_blank())
 }
 
-.plot_latent_reg <- function(x, fac_num, n, h) {
-  if (is.null(x$scores$rotated)) stop("Scores missing.")
-
-  # Validate that the requested factor exists in the model
+plot_latent_reg <- function(x, fac_num, n, h) {
+  if (is.null(x$scores$rotated)) cli::cli_abort("Scores are required.")
   if (fac_num < 1 || fac_num > x$meta$k) {
-    stop(sprintf("Requested factor %d exceeds available factors (k = %d).", fac_num, x$meta$k))
+    cli::cli_abort("Requested factor {fac_num} exceeds available factors (k = {x$meta$k}).")
   }
 
-  # Predict GEBVs using the full FA component
-  pred_mat <- x$scores$rotated %*% t(x$loadings$rotated)
-  long_pred <- as.data.frame(as.table(pred_mat))
-  colnames(long_pred) <- c("Genotype", "Environment", "Predicted_GEBV")
-
-  # Dynamically extract the requested factor loading for the X-axis
-  env_loadings <- data.frame(
-    Environment = rownames(x$loadings$rotated),
-    Target_Factor = x$loadings$rotated[, fac_num]
+  # Common (factor-driven) genetic effect of each genotype in each environment.
+  pred <- x$scores$rotated %*% t(x$loadings$rotated)
+  long <- data.frame(
+    Genotype = rep(rownames(pred), times = ncol(pred)),
+    Environment = rep(colnames(pred), each = nrow(pred)),
+    Predicted = as.vector(pred),
+    stringsAsFactors = FALSE
   )
-  long_pred <- merge(long_pred, env_loadings, by = "Environment")
+  long$Loading <- x$loadings$rotated[long$Environment, fac_num]
+  long$Type <- label_types(long$Genotype, x$fast, n, h)
+  long <- long[order(long$Type, decreasing = TRUE), , drop = FALSE]
 
-  # Setup highlighting
-  long_pred$Type <- "Other"
-  if (!is.null(x$fast)) {
-    top_gens <- head(x$fast$Genotype[order(x$fast$OP, decreasing = TRUE)], n)
-    long_pred$Type[long_pred$Genotype %in% top_gens] <- "Top Candidate"
-  }
-  if (!is.null(h)) long_pred$Type[long_pred$Genotype %in% h] <- "Highlight"
-  long_pred$Type <- factor(long_pred$Type, levels = c("Highlight", "Top Candidate", "Other"))
-
-  # Get variance explained for dynamic axis labeling
-  var_exp <- round(x$meta$var_explained[fac_num], 1)
-
-  ggplot2::ggplot(long_pred, ggplot2::aes(x = Target_Factor, y = Predicted_GEBV, group = Genotype)) +
-    ggplot2::geom_line(ggplot2::aes(color = Type, alpha = Type, linewidth = Type)) +
-    ggplot2::scale_color_manual(values = c("Highlight" = "#e74c3c", "Top Candidate" = "#3498db", "Other" = "grey85")) +
-    ggplot2::scale_alpha_manual(values = c("Highlight" = 1, "Top Candidate" = 1, "Other" = 0.4)) +
-    ggplot2::scale_linewidth_manual(values = c("Highlight" = 1.2, "Top Candidate" = 1, "Other" = 0.5)) +
+  ve <- x$meta$var_explained[fac_num]
+  ggplot2::ggplot(long, ggplot2::aes(x = .data$Loading, y = .data$Predicted, group = .data$Genotype)) +
+    ggplot2::geom_line(ggplot2::aes(color = .data$Type, alpha = .data$Type, linewidth = .data$Type)) +
+    ggplot2::scale_color_manual(values = type_colours, drop = FALSE) +
+    ggplot2::scale_alpha_manual(values = c("Highlight" = 1, "Top Candidate" = 1, "Other" = 0.4), drop = FALSE) +
+    ggplot2::scale_linewidth_manual(values = c("Highlight" = 1.2, "Top Candidate" = 1, "Other" = 0.5), drop = FALSE) +
     ggplot2::labs(
       title = paste("Latent Regression (Reaction Norms) - Factor", fac_num),
-      x = paste0("Environmental Factor ", fac_num, " Loading (", var_exp, "% Var Explained)"),
-      y = "Predicted Interaction GEBV"
+      x = sprintf("Factor %d loading (%.1f%% of genetic variance)", fac_num, ve),
+      y = "Common genetic effect (FA component)"
     ) +
     theme_genetics() +
-    ggplot2::theme(legend.position = "bottom", legend.title = ggplot2::element_blank())
+    ggplot2::theme(legend.title = ggplot2::element_blank())
 }
 
-.plot_cluster <- function(x) {
-  if (is.null(x$matrices$Cor)) stop("Correlation matrix missing.")
-  dist_mat <- as.dist(1 - x$matrices$Cor)
-  hc <- hclust(dist_mat, method = "ward.D2")
-
-  # Base R hclust plot is very clean for this
-  plot(hc, main = "Mega-Environment Clustering", xlab = "Environments", ylab = "Distance (1 - r)", sub = "", col = "darkblue")
+plot_cluster <- function(x) {
+  C <- x$matrices$Cor
+  if (is.null(C)) cli::cli_abort("Correlation matrix missing.")
+  # sqrt(2(1 - r)) is a Euclidean distance (1 - r is not), as Ward's method requires.
+  D <- 2 * (1 - C)
+  D[D < 0] <- 0
+  hc <- stats::hclust(stats::as.dist(sqrt(D)), method = "ward.D2")
+  graphics::plot(hc, main = "Mega-Environment Clustering", xlab = "Environments", ylab = "Distance sqrt(2(1 - r))", sub = "", col = "darkblue")
+  invisible(hc)
 }

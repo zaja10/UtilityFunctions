@@ -4,14 +4,25 @@
 \alias{mkConv}
 \title{Safely ensure ASReml model convergence}
 \usage{
-mkConv(mod)
+mkConv(mod, max_tries = 20, tol = 1, env = parent.frame())
 }
 \arguments{
-\item{mod}{A fitted asreml model object}
+\item{mod}{A fitted \code{asreml} model object.}
+
+\item{max_tries}{Integer. Maximum number of updates (default 20).}
+
+\item{tol}{Numeric. Maximum acceptable absolute percentage change in any
+variance parameter (default 1).}
+
+\item{env}{Environment in which the model's data and any \code{vm()}
+matrices can be found (default: the caller's).}
 }
 \value{
-A converged asreml model object
+The updated \code{asreml} object. A warning is raised if it still
+  has not converged after \code{max_tries} updates.
 }
 \description{
-This function checks the percentage change in variance components and updates the model if it hasn't converged, up to a maximum number of tries.
+Re-runs \code{update()} on a fitted model until the log-likelihood has
+converged and no variance parameter changed by more than \code{tol} percent
+on the last iteration, or until \code{max_tries} updates have been made.
 }

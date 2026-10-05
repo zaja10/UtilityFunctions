@@ -7,10 +7,11 @@
 extract_fa_loadings(fa_object)
 }
 \arguments{
-\item{fa_object}{An FA model object.}
+\item{fa_object}{An \code{fa_model}.}
 }
 \value{
-A list containing the rotated loadings matrix and the Variance Accounted For (VAF) summary.
+A list with \code{Loadings} (rotated), \code{Loadings_raw} and
+  \code{VAF}.
 }
 \description{
 Extract Factor Analytic Loadings and VAF

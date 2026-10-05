@@ -12,14 +12,18 @@ find_missing_plots(
 )
 }
 \arguments{
-\item{data}{Dataframe containing the trial layout.}
+\item{data}{Data frame containing the trial layout.}
 
-\item{experiment}{Character. Column name for the experiment/trial identifier.}
+\item{experiment}{Character. Experiment/trial column.}
 
-\item{row}{Character. Column name for Row.}
+\item{row}{Character. Row column (numeric or numeric-valued factor).}
 
-\item{col}{Character. Column name for Column.}
+\item{col}{Character. Column column.}
+}
+\value{
+A data frame of missing positions named after \code{experiment},
+  \code{row} and \code{col}, or \code{NULL} if every grid is complete.
 }
 \description{
-Identifies gaps in rectangular grids (Row x Col).
+Identifies gaps in each trial's rectangular row x column grid.
 }

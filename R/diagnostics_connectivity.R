@@ -1,111 +1,87 @@
 #' Check MET Connectivity (Island Detection)
 #'
-#' Scans a Multi-Environment Trial (MET) dataset to identify disconnected clusters
-#' of environments. Disconnected trials ("islands") will result in singular
-#' factor analytic models.
+#' Builds the trial-by-trial matrix of shared genotypes and finds connected
+#' components. Two trials are linked when they share at least
+#' \code{min_shared} genotypes. Disconnected trials ("islands") make genetic
+#' covariances between trial groups inestimable; trials with only a few links
+#' are flagged because factor analytic covariances need far more than one
+#' common genotype to be estimated well.
 #'
-#' @param data Dataframe containing the MET data.
-#' @param trial_col Character. Column name for Trial/Environment.
-#' @param gen_col Character. Column name for Genotype.
-#' @param stop_if_disconnected Logical. If TRUE, stops execution if islands are found.
-#' @return A list containing:
-#'   \item{n_clusters}{Integer. Number of disconnected components.}
-#'   \item{membership}{Dataframe mapping Trial to Cluster.}
-#'   \item{islands}{Character vector of Trial names that are disconnected from the main group.}
-#' @import cli
+#' @param data Data frame containing the MET data.
+#' @param trial_col Character. Trial/environment column.
+#' @param gen_col Character. Genotype column.
+#' @param min_shared Integer. Minimum shared genotypes for two trials to be
+#'   linked (default 1).
+#' @param warn_below Integer. Report trials whose best link to any other trial
+#'   shares fewer than this many genotypes (default 5).
+#' @param stop_if_disconnected Logical. Abort if islands are found.
+#' @return A list with \code{n_clusters}, \code{membership} (\code{Trial},
+#'   \code{Cluster}), \code{islands} (trials outside the largest cluster),
+#'   \code{shared} (matrix of shared genotype counts) and \code{weak}
+#'   (trials whose best link is below \code{warn_below}). Rows with missing
+#'   trial or genotype are ignored.
 #' @export
-check_met_connectivity <- function(data, trial_col = "Trial", gen_col = "Genotype", stop_if_disconnected = FALSE) {
-    if (!trial_col %in% names(data)) cli::cli_abort("Column {.val {trial_col}} not found in data.")
-    if (!gen_col %in% names(data)) cli::cli_abort("Column {.val {gen_col}} not found in data.")
+check_met_connectivity <- function(data, trial_col = "Trial", gen_col = "Genotype", min_shared = 1,
+                                   warn_below = 5, stop_if_disconnected = FALSE) {
+  for (col in c(trial_col, gen_col)) {
+    if (!col %in% names(data)) cli::cli_abort("Column {.val {col}} not found in data.")
+  }
+  tr <- as.character(data[[trial_col]])
+  ge <- as.character(data[[gen_col]])
+  keep <- !is.na(tr) & !is.na(ge)
+  if (any(!keep)) cli::cli_alert_info("Ignoring {sum(!keep)} row{?s} with missing trial or genotype.")
+  tr <- tr[keep]
+  ge <- ge[keep]
+  trials <- unique(tr)
 
-    trials <- unique(as.character(data[[trial_col]]))
-    n_t <- length(trials)
+  inc <- table(factor(ge, levels = unique(ge)), factor(tr, levels = trials)) > 0
+  shared <- crossprod(inc + 0)
+  dimnames(shared) <- list(trials, trials)
 
-    if (n_t < 2) {
-        return(list(n_clusters = 1, membership = data.frame(Trial = trials, Cluster = 1), islands = character(0)))
+  adj <- shared >= min_shared
+  diag(adj) <- FALSE
+  cluster <- connected_components(adj)
+  sizes <- table(cluster)
+  main <- as.integer(names(sizes)[which.max(sizes)])
+  membership <- data.frame(Trial = trials, Cluster = unname(cluster), stringsAsFactors = FALSE)
+  islands <- trials[cluster != main]
+
+  off <- shared
+  diag(off) <- 0
+  best_link <- if (length(trials) > 1) apply(off, 1, max) else stats::setNames(0, trials)
+  weak <- trials[best_link < warn_below & length(trials) > 1]
+
+  if (length(islands) > 0) {
+    cli::cli_alert_warning("Found {length(islands)} disconnected trial{?s} (islands): {.val {utils::head(islands, 10)}}")
+    if (stop_if_disconnected) cli::cli_abort("Disconnected trial network. Remove or bridge the islands.")
+  } else {
+    cli::cli_alert_success("All {length(trials)} trial{?s} are connected.")
+  }
+  if (length(weak) > 0) {
+    cli::cli_alert_warning("{length(weak)} trial{?s} share fewer than {warn_below} genotypes with every other trial.")
+  }
+
+  list(
+    n_clusters = length(sizes), membership = membership, islands = islands,
+    shared = shared, weak = weak
+  )
+}
+
+# Connected components of a symmetric logical adjacency matrix (BFS).
+connected_components <- function(adj) {
+  n <- nrow(adj)
+  comp <- integer(n)
+  id <- 0L
+  for (s in seq_len(n)) {
+    if (comp[s] != 0L) next
+    id <- id + 1L
+    comp[s] <- id
+    frontier <- s
+    while (length(frontier) > 0) {
+      nb <- which(colSums(adj[frontier, , drop = FALSE]) > 0 & comp == 0L)
+      comp[nb] <- id
+      frontier <- nb
     }
-
-    # 1. Build Adjacency using Sparse Logic -------------------------------------
-    pairs <- unique(data[, c(trial_col, gen_col)])
-    gen_list <- split(pairs[[gen_col]], pairs[[trial_col]])
-
-    adj_list <- vector("list", n_t)
-    names(adj_list) <- trials
-
-    # Efficient Connectivity Check
-    # We iterate through unique genotypes to see which trials they connect
-    # This is O(G * T_per_G^2) which is usually better than O(T^2 * G) if set intersections are slow
-    # Actually, Jaccard intersection approach is fine for T < 500
-
-    for (i in 1:(n_t - 1)) {
-        t1 <- trials[i]
-        g1 <- gen_list[[t1]]
-        # optimization: store lengths?
-        for (j in (i + 1):n_t) {
-            t2 <- trials[j]
-            g2 <- gen_list[[t2]]
-
-            # Intersection
-            if (length(intersect(g1, g2)) > 0) {
-                adj_list[[t1]] <- c(adj_list[[t1]], t2)
-                adj_list[[t2]] <- c(adj_list[[t2]], t1)
-            }
-        }
-    }
-
-    # 2. BFS for Connected Components -------------------------------------------
-    visited <- rep(FALSE, n_t)
-    names(visited) <- trials
-    cluster_id <- rep(NA, n_t)
-    names(cluster_id) <- trials
-    cid <- 0
-
-    for (t in trials) {
-        if (!visited[t]) {
-            cid <- cid + 1
-            queue <- c(t)
-            visited[t] <- TRUE
-            cluster_id[t] <- cid
-
-            while (length(queue) > 0) {
-                curr <- queue[1]
-                queue <- queue[-1]
-
-                neighbors <- adj_list[[curr]]
-                for (nb in neighbors) {
-                    if (!visited[nb]) {
-                        visited[nb] <- TRUE
-                        cluster_id[nb] <- cid
-                        queue <- c(queue, nb)
-                    }
-                }
-            }
-        }
-    }
-
-    # 3. Analyze & Report -------------------------------------------------------
-    counts <- table(cluster_id)
-    main_cluster <- as.numeric(names(counts)[which.max(counts)])
-    cluster_df <- data.frame(Trial = names(cluster_id), Cluster = cluster_id, stringsAsFactors = FALSE)
-
-    islands <- cluster_df$Trial[cluster_df$Cluster != main_cluster]
-
-    res <- list(
-        n_clusters = length(unique(cluster_id)),
-        membership = cluster_df,
-        islands = islands
-    )
-
-    if (length(islands) > 0) {
-        cli::cli_alert_warning("MET Connectivity Issue: Found {length(islands)} disconnected trials (Islands).")
-        cli::cli_ul(head(islands, 10))
-
-        if (stop_if_disconnected) {
-            cli::cli_abort("Stopping analysis due to disconnected trial network. Please remove islands or bridge them.")
-        }
-    } else {
-        cli::cli_alert_success("MET Connectivity: All trials are connected.")
-    }
-
-    return(res)
+  }
+  stats::setNames(comp, rownames(adj))
 }

@@ -9,7 +9,8 @@ generate_met_data(
   n_gen = 100,
   n_reps = 2,
   sparsity = 0.2,
-  seed = 123
+  seed = 123,
+  n_cols = 20
 )
 }
 \arguments{
@@ -17,26 +18,27 @@ generate_met_data(
 
 \item{n_gen}{Integer. Number of genotypes.}
 
-\item{n_reps}{Integer. Number of replicates per site.}
+\item{n_reps}{Integer. Replicates per site.}
 
-\item{sparsity}{Numeric (0-1). Proportion of missing plots to simulate (unbalanced data).}
+\item{sparsity}{Numeric in [0, 1). Proportion of plots removed at random.}
 
-\item{seed}{Integer. Random seed for reproducibility.}
+\item{seed}{Integer seed (\code{NULL} to use the current RNG state).}
+
+\item{n_cols}{Integer. Field columns per site (default 20).}
 }
 \value{
-A dataframe containing \code{Site}, \code{Genotype}, \code{Rep},
-        \code{Row}, \code{Column}, and \code{Yield}.
+A data frame with \code{Site}, \code{Genotype}, \code{Rep},
+  \code{Row}, \code{Column} and \code{Yield}.
 }
 \description{
-Simulates a Multi-Environment Trial (MET) dataset with realistic biological
-and spatial properties. Useful for testing analysis pipelines and training.
+Simulates a multi-environment trial with a two-factor GxE structure, a
+spatial trend and residual noise. Each site is laid out as a randomised
+complete block design (one band of rows per replicate, genotypes randomised
+within replicate), so genetic effects are not confounded with field position.
 }
 \details{
-The simulation includes:
-\itemize{
-  \item \strong{Genetic Main Effects:} Base yield potential (Factor 1).
-  \item \strong{GxE Interaction:} Differential response to stress (Factor 2).
-  \item \strong{Spatial Trends:} A fertility gradient (sine wave + linear) across Field Rows/Cols.
-  \item \strong{Noise:} Random residual error.
-}
+Genetic values are \eqn{s_{1i} \lambda_{1j} + s_{2i} \lambda_{2j}}
+  with \eqn{\lambda_1 \sim U(5, 15)} (main effect) and
+  \eqn{\lambda_2 \sim U(-8, 8)} (crossover GxE); the trend is
+  \eqn{2 \sin(row / 5) + 0.1\, col}; residual SD is 2.5.
 }

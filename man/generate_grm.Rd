@@ -4,28 +4,28 @@
 \alias{generate_grm}
 \title{Generate Synthetic Genomic Relationship Matrix (GRM)}
 \usage{
-generate_grm(n_gen = 200, n_markers = 1000, seed = 123)
+generate_grm(n_gen = 200, n_markers = 1000, seed = 123, ridge = 0.01)
 }
 \arguments{
-\item{n_gen}{Integer. Number of genotypes to simulate.}
+\item{n_gen}{Integer. Number of genotypes.}
 
 \item{n_markers}{Integer. Number of SNP markers.}
 
-\item{seed}{Integer. Seed for reproducibility.}
+\item{seed}{Integer seed (\code{NULL} to use the current RNG state). The
+caller's RNG state is restored afterwards.}
+
+\item{ridge}{Numeric. Value added to the diagonal (default 0.01).}
 }
 \value{
-A list containing:
-\describe{
-  \item{grm}{The calculated GRM (n_gen x n_gen).}
-  \item{markers}{The raw allele dosage matrix (0, 1, 2).}
-}
+A list with \code{grm} (n_gen x n_gen) and \code{markers} (0/1/2 dosages).
 }
 \description{
-Creates a Genomic Relationship Matrix (GRM) using the VanRaden (2008) Method 1.
+Simulates biallelic SNP dosages and builds the VanRaden (2008) method 1 GRM
 \deqn{G = \frac{ZZ'}{2 \sum p_i (1-p_i)}}
-where \eqn{Z} is the centered genotype matrix ($M - 2P$).
+where \eqn{Z = M - 2P} is the centred dosage matrix. Centring makes
+\eqn{G} singular, so \code{ridge} is added to the diagonal.
 }
 \references{
-VanRaden, P. M. (2008). Efficient methods to compute genomic predictions.
-\emph{Journal of dairy science}, 91(11), 4414-4423.
+VanRaden, P. M. (2008). Efficient methods to compute genomic
+  predictions. \emph{Journal of Dairy Science} 91, 4414-4423.
 }

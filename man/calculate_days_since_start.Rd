@@ -7,14 +7,17 @@
 calculate_days_since_start(doy_vector, planting_date_string)
 }
 \arguments{
-\item{doy_vector}{Numeric vector of DOY values.}
+\item{doy_vector}{Numeric vector of DOY values (1-366).}
 
-\item{planting_date_string}{Character string format "YYYY-Month-DD" (e.g., "2023-October-04").}
+\item{planting_date_string}{Planting date: a \code{Date}, an ISO string
+(\code{"2023-10-04"}) or \code{"YYYY-Month-DD"} with an English month
+name (\code{"2023-October-04"}). Parsing does not depend on the locale.}
 }
 \value{
 Numeric vector of days elapsed since planting.
 }
 \description{
-Converts a vector of Day of Year (DOY) values into "Days Since Start" based on a planting date string.
-Handles year transitions (e.g., planting in Oct, sampling in Jan).
+Converts day-of-year (DOY) values to days elapsed since planting. A DOY
+smaller than the planting DOY is taken to fall in the following year, so
+seasons may span one New Year.
 }

@@ -4,25 +4,38 @@
 \alias{generate_genomic_met}
 \title{Generate Genomic MET Data}
 \usage{
-generate_genomic_met(n_sites = 10, grm, n_reps = 2, h2 = 0.5)
+generate_genomic_met(
+  n_sites = 10,
+  grm,
+  n_reps = 2,
+  h2 = 0.5,
+  seed = 123,
+  n_cols = 20
+)
 }
 \arguments{
-\item{n_sites}{Integer. Number of environments to simulate.}
+\item{n_sites}{Integer. Number of environments.}
 
-\item{grm}{Matrix. The relationship matrix (e.g. from \code{generate_grm()}).
-Genotypes in the GRM define the population.}
+\item{grm}{Matrix. Relationship matrix (e.g. from \code{\link{generate_grm}}).}
 
-\item{n_reps}{Integer. Number of replicates per site.}
+\item{n_reps}{Integer. Replicates per site.}
 
-\item{h2}{Numeric (0 to 1). The target Heritability (Broad Sense) for the trial.
-Lower h2 implies higher residual noise.}
+\item{h2}{Numeric in (0, 1). Plot-level heritability within each site,
+\eqn{\sigma^2_g / (\sigma^2_g + \sigma^2_e)}. The spatial trend is added on
+top and excluded from this ratio, because a spatial model is expected to
+remove it.}
+
+\item{seed}{Integer seed (\code{NULL} to use the current RNG state).}
+
+\item{n_cols}{Integer. Field columns per site (default 20).}
 }
 \value{
-A dataframe with columns:
-\code{Site, Genotype, Rep, Row, Column, Yield}.
+A data frame with \code{Site}, \code{Genotype}, \code{Rep},
+  \code{Row}, \code{Column} and \code{Yield}.
 }
 \description{
-Simulates a Multi-Environment Trial (MET) where the genetic signal is strictly
-controlled by a user-provided Genomic Relationship Matrix (GRM). This is ideal
-for validating `vm()` (variance model) terms in ASReml-R.
+Simulates a MET whose genetic values follow a user-supplied GRM: two
+latent factors \eqn{f_r \sim N(0, G)} combined with site loadings as in
+\code{\link{generate_met_data}}. Layout is a randomised complete block
+design per site.
 }

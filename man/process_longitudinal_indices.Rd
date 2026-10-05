@@ -16,35 +16,31 @@ process_longitudinal_indices(
 )
 }
 \arguments{
-\item{data}{Dataframe containing the wide-format data.}
+\item{data}{Data frame containing the wide-format data.}
 
-\item{meta_cols}{Character vector or numeric indices of metadata columns to include in the output.}
+\item{meta_cols}{Character vector or numeric indices of metadata columns to
+keep.}
 
-\item{spectral_cols}{Character vector or numeric indices of columns containing spectral data.}
+\item{spectral_cols}{Character vector or numeric indices of spectral columns.}
 
-\item{split_char}{Character. Delimiter used in column names (default ".").}
+\item{split_char}{Character. Delimiter in column names (default \code{"."}).}
 
-\item{trait_pos}{Integer. Position of the Trait in the split name (default 1).}
+\item{trait_pos}{Integer. Position of the trait in the split name (default 1).}
 
-\item{time_pos}{Integer. Position of the Time/Day in the split name (default 2).}
+\item{time_pos}{Integer. Position of the time in the split name (default 2).}
 
 \item{band_mapping}{Named vector mapping raw trait names to standard bands.
-Default: c("Blue"="B", "Green"="G", "Red"="R", "RedEdge"="RE1", "NIR"="N").}
+Default: \code{c(Blue = "B", Green = "G", Red = "R", RedEdge = "RE1", NIR = "N")}.}
 
-\item{...}{Additional arguments passed to \code{calculate_vegetation_indices}.}
+\item{...}{Passed to \code{\link{calculate_vegetation_indices}}.}
 }
 \value{
-A long-format dataframe with calculated indices and a 'Day' column.
+A long data frame with indices and a \code{Day} column, or
+  \code{NULL} when no timepoint has all mapped bands. Timepoints with
+  missing bands are skipped with a single warning.
 }
 \description{
-Iterates through time-series spectral data in wide format (e.g., Trait.Time),
-calculates vegetation indices for each timepoint, and combines the results.
-}
-\examples{
-\dontrun{
-# Assuming b624.df is your wide data:
-# HTPtraitsVec <- 43:132
-# meta_cols <- 1:42
-# results <- process_longitudinal_indices(b624.df, meta_cols, HTPtraitsVec)
-}
+Iterates through time-series spectral data in wide format (e.g.
+\code{Trait.Time}), calculates vegetation indices for each timepoint, and
+stacks the results.
 }

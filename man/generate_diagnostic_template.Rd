@@ -7,15 +7,19 @@
 generate_diagnostic_template(selection_files_dir, full_data, output_path)
 }
 \arguments{
-\item{selection_files_dir}{Path to the directory containing spatial model selection CSVs}
+\item{selection_files_dir}{Directory containing the
+\code{*_Spatial_Model_Selection.csv} files.}
 
-\item{full_data}{Dataframe of the full trial data}
+\item{full_data}{Data frame of the full trial data.}
 
-\item{output_path}{Path to save the Excel template}
+\item{output_path}{Path of the Excel file to write.}
 }
 \value{
-NULL (Writes an Excel file)
+Invisibly, the template data frame (\code{NULL} if no selection
+  files were found).
 }
 \description{
-Reads the selection files and creates an Excel template for human review of models and outliers.
+Writes an Excel template, one row per trial, listing the selected model's
+fixed, random and residual terms for a reviewer to edit. Set
+\code{remove_outliers} to \code{TRUE} to mask flagged outliers.
 }

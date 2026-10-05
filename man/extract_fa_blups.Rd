@@ -2,16 +2,17 @@
 % Please edit documentation in R/analysis_fa.R
 \name{extract_fa_blups}
 \alias{extract_fa_blups}
-\title{Extract Factor Analytic BLUPs and Scores}
+\title{Extract Factor Analytic Scores and FAST Indices}
 \usage{
 extract_fa_blups(fa_object)
 }
 \arguments{
-\item{fa_object}{An FA model object.}
+\item{fa_object}{An \code{fa_model}.}
 }
 \value{
-A list containing the raw/rotated scores.
+A list with \code{Scores} (rotated), \code{Scores_raw} and
+  \code{FAST}.
 }
 \description{
-Extract Factor Analytic BLUPs and Scores
+Extract Factor Analytic Scores and FAST Indices
 }
